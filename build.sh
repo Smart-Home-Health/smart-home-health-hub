@@ -13,8 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Service names
-BACKEND_SERVICE="shh-device.backend"
-FRONTEND_SERVICE="shh-device.frontend"
+BACKEND_SERVICE="shh-backend"
 
 # Function to print colored output
 print_status() {
@@ -80,36 +79,52 @@ EOF
     print_success "Backend service created and enabled"
 }
 
-# Function to create frontend service
-create_frontend_service() {
+# Function to create nginx configuration
+create_nginx_config() {
     local project_root="$1"
-    local service_file="/etc/systemd/system/${FRONTEND_SERVICE}.service"
+    local nginx_config="/etc/nginx/sites-available/shh-frontend"
+    local nginx_enabled="/etc/nginx/sites-enabled/shh-frontend"
     
-    print_status "Creating frontend service file..."
+    print_status "Creating nginx configuration..."
     
-    sudo tee "$service_file" > /dev/null << EOF
-[Unit]
-Description=Smart Home Health Hub Frontend
-After=network.target
-Wants=network.target
+    sudo tee "$nginx_config" > /dev/null << EOF
+server {
+    listen 80;
+    server_name _;
 
-[Service]
-Type=simple
-User=$USER
-Group=$USER
-WorkingDirectory=${project_root}/frontend
-Environment=PATH=/usr/bin:/usr/local/bin
-ExecStart=/usr/bin/npx serve -s dist -l 3000
-Restart=always
-RestartSec=10
+    root ${project_root}/frontend/dist;
+    index index.html;
 
-[Install]
-WantedBy=multi-user.target
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    # Additional headers for better security and performance
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
 EOF
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable "$FRONTEND_SERVICE"
-    print_success "Frontend service created and enabled"
+    # Enable the site
+    if [ ! -L "$nginx_enabled" ]; then
+        sudo ln -sf "$nginx_config" "$nginx_enabled"
+        print_success "Nginx site enabled"
+    fi
+    
+    # Test nginx configuration
+    if sudo nginx -t; then
+        print_success "Nginx configuration is valid"
+    else
+        print_error "Nginx configuration is invalid"
+        return 1
+    fi
 }
 
 # Function to stop service if running
@@ -159,6 +174,11 @@ if ! command_exists npm; then
     exit 1
 fi
 
+if ! command_exists nginx; then
+    print_error "Nginx is not installed"
+    exit 1
+fi
+
 if ! command_exists systemctl; then
     print_error "systemctl is not available - this script requires systemd"
     exit 1
@@ -185,17 +205,23 @@ else
     print_success "Backend service already exists"
 fi
 
-if ! service_exists "$FRONTEND_SERVICE"; then
-    print_warning "Frontend service does not exist, creating it..."
-    create_frontend_service "$PROJECT_ROOT"
-else
-    print_success "Frontend service already exists"
+# Setup nginx configuration
+print_status "Setting up nginx configuration..."
+create_nginx_config "$PROJECT_ROOT"
+
+# Remove old frontend service if it exists
+if service_exists "$FRONTEND_SERVICE"; then
+    print_warning "Removing old frontend service (nginx will handle frontend now)..."
+    stop_service_if_running "$FRONTEND_SERVICE"
+    sudo systemctl disable "$FRONTEND_SERVICE"
+    sudo rm -f "/etc/systemd/system/${FRONTEND_SERVICE}.service"
+    sudo systemctl daemon-reload
+    print_success "Old frontend service removed"
 fi
 
 # Stop services before build
 print_status "Stopping services for build process..."
 stop_service_if_running "$BACKEND_SERVICE"
-stop_service_if_running "$FRONTEND_SERVICE"
 
 # Step 1: Pull from GitHub
 print_status "Pulling latest changes from GitHub..."
@@ -253,18 +279,6 @@ else
     exit 1
 fi
 
-# Install serve globally if not present (needed for frontend service)
-if ! command_exists serve; then
-    print_status "Installing serve package globally for frontend service..."
-    if npm install -g serve; then
-        print_success "Serve package installed globally"
-    else
-        print_warning "Failed to install serve globally - frontend service may not work"
-    fi
-else
-    print_success "Serve package is already available"
-fi
-
 # Build frontend
 print_status "Building frontend..."
 if npm run build; then
@@ -280,16 +294,19 @@ cd "$ORIGINAL_DIR"
 # Start services after successful build
 print_status "Starting services after successful build..."
 start_service "$BACKEND_SERVICE"
-start_service "$FRONTEND_SERVICE"
+
+# Reload nginx to serve updated frontend
+reload_nginx
 
 print_success "Build process completed successfully!"
 print_status "Services are now running:"
 echo "  - Backend service: $BACKEND_SERVICE"
-echo "  - Frontend service: $FRONTEND_SERVICE"
+echo "  - Frontend served by nginx on port 80"
 print_status "Service management commands:"
-echo "  - Check status: sudo systemctl status $BACKEND_SERVICE"
-echo "  - Check status: sudo systemctl status $FRONTEND_SERVICE"
-echo "  - View logs: sudo journalctl -u $BACKEND_SERVICE -f"
-echo "  - View logs: sudo journalctl -u $FRONTEND_SERVICE -f"
-echo "  - Stop services: sudo systemctl stop $BACKEND_SERVICE $FRONTEND_SERVICE"
-echo "  - Start services: sudo systemctl start $BACKEND_SERVICE $FRONTEND_SERVICE"
+echo "  - Check backend status: sudo systemctl status $BACKEND_SERVICE"
+echo "  - Check nginx status: sudo systemctl status nginx"
+echo "  - View backend logs: sudo journalctl -u $BACKEND_SERVICE -f"
+echo "  - View nginx logs: sudo tail -f /var/log/nginx/access.log"
+echo "  - Stop backend: sudo systemctl stop $BACKEND_SERVICE"
+echo "  - Start backend: sudo systemctl start $BACKEND_SERVICE"
+echo "  - Reload nginx: sudo systemctl reload nginx"
