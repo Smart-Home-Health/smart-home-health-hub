@@ -323,6 +323,10 @@ export default function Dashboard() {
           setMedicationDueCount(msg.state.medications);
         }
         
+        if (msg.state.care_tasks !== undefined) {
+          setCareTaskDueCount(msg.state.care_tasks);
+        }
+        
         if (msg.state.dashboard_chart_1) {
           setDashboardChart1(msg.state.dashboard_chart_1);
         }

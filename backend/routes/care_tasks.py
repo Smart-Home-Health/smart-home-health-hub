@@ -19,6 +19,7 @@ from crud.scheduling import (
     get_daily_care_task_schedule, complete_care_task, get_care_task_schedule,
     validate_cron_expression, get_next_scheduled_times
 )
+from crud.patients import get_current_patient
 
 logger = logging.getLogger("app")
 
@@ -30,13 +31,17 @@ router = APIRouter(prefix="/api", tags=["care_tasks"])
 async def api_add_care_task(data: dict = Body(...), db: Session = Depends(get_db)):
     """Add a new care task"""
     try:
+        # Get current patient to assign the task to them
+        current_patient = get_current_patient(db)
+        patient_id = current_patient.id if current_patient else None
+        
         task_id = add_care_task(
             db=db,
-            name=data.get("name"),
+            name=data["name"],
+            category_id=data["category_id"],
             description=data.get("description"),
-            category_id=data.get("category_id"),
             active=data.get("active", True),
-            patient_id=data.get("patient_id")  # Allow explicit patient assignment, defaults to None for global tasks
+            patient_id=patient_id
         )
         if task_id:
             return {"id": task_id, "status": "success"}
@@ -54,28 +59,32 @@ async def api_add_care_task(data: dict = Body(...), db: Session = Depends(get_db
 async def get_active_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
     """Get all active care tasks, optionally filtered by patient"""
     try:
-        care_tasks = get_care_tasks(db, active_only=True, patient_id=patient_id)
-        return {"care_tasks": care_tasks}
+        # If no patient_id provided, use current patient
+        if patient_id is None:
+            current_patient = get_current_patient(db)
+            patient_id = current_patient.id if current_patient else None
+        
+        tasks = get_care_tasks(db, active_only=True, patient_id=patient_id)
+        return {"care_tasks": tasks}
     except Exception as e:
-        logger.error(f"Error getting active care tasks: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error retrieving active care tasks: {str(e)}"}
-        )
+        logger.error(f"Error fetching active care tasks: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
 @router.get("/care-tasks/inactive")
 async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
     """Get all inactive care tasks, optionally filtered by patient"""
     try:
-        care_tasks = get_care_tasks(db, active_only=False, patient_id=patient_id)
-        return {"care_tasks": care_tasks}
+        # If no patient_id provided, use current patient
+        if patient_id is None:
+            current_patient = get_current_patient(db)
+            patient_id = current_patient.id if current_patient else None
+        
+        tasks = get_care_tasks(db, active_only=False, patient_id=patient_id)
+        return {"care_tasks": tasks}
     except Exception as e:
-        logger.error(f"Error getting inactive care tasks: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error retrieving inactive care tasks: {str(e)}"}
-        )
+        logger.error(f"Error fetching inactive care tasks: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
 @router.put("/care-tasks/{task_id}")
@@ -171,6 +180,12 @@ async def api_add_care_task_schedule(
         if not is_valid:
             return JSONResponse(status_code=400, content={"detail": f"Invalid cron expression: {error_msg}"})
         
+        # If patient_id not provided, get current patient
+        patient_id = data.get("patient_id")
+        if patient_id is None:
+            current_patient = get_current_patient(db)
+            patient_id = current_patient.id if current_patient else None
+        
         schedule_id = add_care_task_schedule(
             db=db,
             care_task_id=care_task_id,
@@ -178,7 +193,7 @@ async def api_add_care_task_schedule(
             description=data.get("description"),
             active=data.get("active", True),
             notes=data.get("notes"),
-            patient_id=data.get("patient_id")  # Allow explicit patient_id, fallback to current patient in function
+            patient_id=patient_id
         )
         if schedule_id:
             return {"id": schedule_id, "status": "success"}
@@ -194,16 +209,18 @@ async def api_add_care_task_schedule(
 
 @router.get("/care-tasks/{care_task_id}/schedules")
 async def get_care_task_schedules_endpoint(care_task_id: int, patient_id: int = None, db: Session = Depends(get_db)):
-    """Get all schedules for a specific care task, optionally filtered by patient"""
+    """Get all schedules for a specific care task"""
     try:
-        schedules = get_care_task_schedules(db, care_task_id, patient_id)
+        # If no patient_id provided, use current patient
+        if patient_id is None:
+            current_patient = get_current_patient(db)
+            patient_id = current_patient.id if current_patient else None
+        
+        schedules = get_care_task_schedules(db, care_task_id, patient_id=patient_id)
         return {"schedules": schedules}
     except Exception as e:
-        logger.error(f"Error getting care task schedules: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error retrieving care task schedules: {str(e)}"}
-        )
+        logger.error(f"Error fetching care task schedules for task {care_task_id}: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
 @router.get("/care-task-schedules")
@@ -222,16 +239,18 @@ async def get_all_care_task_schedules_endpoint(active_only: bool = True, patient
 
 @router.get("/care-task-schedules/daily")
 async def get_daily_care_task_schedule_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
-    """Get today's care task schedule, optionally filtered by patient"""
+    """Get daily care task schedule"""
     try:
-        schedule = get_daily_care_task_schedule(db, patient_id)
+        # If no patient_id provided, use current patient
+        if patient_id is None:
+            current_patient = get_current_patient(db)
+            patient_id = current_patient.id if current_patient else None
+        
+        schedule = get_daily_care_task_schedule(db, patient_id=patient_id)
         return schedule
     except Exception as e:
         logger.error(f"Error getting daily care task schedule: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error retrieving daily care task schedule: {str(e)}"}
-        )
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
 @router.get("/care-task-schedules/{schedule_id}")
@@ -402,6 +421,41 @@ async def skip_care_task_schedule_endpoint(schedule_id: int, data: dict = Body(.
             status_code=500,
             content={"detail": f"Error skipping care task: {str(e)}"}
         )
+
+
+# Admin Care Task endpoints
+@router.get("/admin/care-tasks/active")
+async def get_admin_active_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+    """Get active care tasks for admin view - can filter by patient_id or show all"""
+    try:
+        if patient_id:
+            # Get care tasks for specific patient + global care tasks
+            tasks = get_care_tasks(db, active_only=True, patient_id=patient_id)
+        else:
+            # Get all active care tasks (admin overview) - pass None to get all
+            tasks = get_care_tasks(db, active_only=True, patient_id=-1)  # Use -1 to indicate "show all"
+        
+        return {"care_tasks": tasks}
+    except Exception as e:
+        logger.error(f"Error fetching admin active care tasks: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@router.get("/admin/care-tasks/inactive")
+async def get_admin_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+    """Get inactive care tasks for admin view - can filter by patient_id or show all"""
+    try:
+        if patient_id:
+            # Get care tasks for specific patient + global care tasks
+            tasks = get_care_tasks(db, active_only=False, patient_id=patient_id)
+        else:
+            # Get all inactive care tasks (admin overview) - pass None to get all
+            tasks = get_care_tasks(db, active_only=False, patient_id=-1)  # Use -1 to indicate "show all"
+        
+        return {"care_tasks": tasks}
+    except Exception as e:
+        logger.error(f"Error fetching admin inactive care tasks: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
 # Care Task Category endpoints

@@ -35,7 +35,7 @@ const ModalBase = ({ isOpen, onClose, title, children }) => {
   };
 
   return (
-    <div className={`modal-overlay ${isMobile ? 'mobile' : ''}`} onClick={!isMobile ? handleClose : undefined}>
+    <div className={`dashboard-modal-overlay ${isMobile ? 'mobile' : ''}`} onClick={!isMobile ? handleClose : undefined}>
       <div className={`modal-container ${isMobile ? 'mobile' : ''}`} onClick={e => e.stopPropagation()}>
         <div className={`modal-header ${isMobile ? 'mobile' : ''}`}>
           {isMobile && (

@@ -171,6 +171,9 @@ def get_care_tasks(db: Session, active_only=True, category_id=None, patient_id=N
                     (CareTask.patient_id == active_patient.id) | 
                     (CareTask.patient_id.is_(None))
                 )
+        elif patient_id == -1:
+            # Admin mode: show all tasks regardless of patient
+            pass  # No patient filter
         else:
             # Show tasks for specific patient OR global tasks
             query = query.filter(

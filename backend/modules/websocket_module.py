@@ -234,6 +234,7 @@ class WebSocketModule:
             from state_manager import get_db_session
             from crud.equipment import get_equipment_due_count
             from crud.medications import get_due_and_upcoming_medications_count
+            from crud.scheduling import get_due_and_upcoming_care_tasks_count
             from crud.monitoring import get_unacknowledged_alerts_count, get_active_ventilator_alerts_count
             from crud.settings import get_all_settings
             from crud.vitals import get_last_n_blood_pressure, get_last_n_temperature, get_vitals_by_type, _group_multi_value_vitals
@@ -249,6 +250,7 @@ class WebSocketModule:
                 # Get equipment and medication counts
                 equipment_due_count = get_equipment_due_count(db)
                 medications_due_count = get_due_and_upcoming_medications_count(db)
+                care_tasks_due_count = get_due_and_upcoming_care_tasks_count(db)
                 
                 # Get settings - handle the dict format returned by get_all_settings
                 settings_result = get_all_settings(db)
@@ -314,6 +316,7 @@ class WebSocketModule:
                 'alerts_count': alerts_count,
                 'equipment_due_count': equipment_due_count,
                 'medications': medications_due_count,
+                'care_tasks': care_tasks_due_count,
                 'dashboard_chart_1': {
                     'vital_type': chart_1_vital,
                     'data': chart_1_data
@@ -376,6 +379,7 @@ class WebSocketModule:
                 'alerts_count': 0,
                 'equipment_due_count': 0,
                 'medications': 0,
+                'care_tasks': 0,
                 'spo2_alarm': False,
                 'bpm_alarm': False,
                 'alarm': False,

@@ -8,6 +8,8 @@ import AdminCareTasks from './pages/admin/AdminCareTasks';
 import AdminEquipment from './pages/admin/AdminEquipment';
 import AdminMonitoring from './pages/admin/AdminMonitoring';
 import AdminSettings from './pages/admin/AdminSettings';
+import AdminBusinesses from './pages/admin/AdminBusinesses';
+import AdminProviders from './pages/admin/AdminProviders';
 import "./App.css";
 
 export default function App() {
@@ -25,6 +27,8 @@ export default function App() {
           <Route path="/admin/equipment" element={<AdminEquipment />} />
           <Route path="/admin/monitoring" element={<AdminMonitoring />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
+          <Route path="/admin/businesses" element={<AdminBusinesses />} />
+          <Route path="/admin/providers" element={<AdminProviders />} />
         </Routes>
       </Layout>
     </Router>

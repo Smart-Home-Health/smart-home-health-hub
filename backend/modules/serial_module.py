@@ -36,6 +36,22 @@ class SerialModule:
         self.last_data_time = time.time()
         self.timeout_seconds = 10  # Send -1 values after 10 seconds of no data
         
+    def test_raw_serial_read(self) -> str:
+        """Test method to read raw data from serial port for debugging."""
+        if not self.serial_connection or not self.is_connected:
+            return "No serial connection"
+        
+        try:
+            # Try different read methods
+            if self.serial_connection.in_waiting > 0:
+                # Read all available bytes
+                raw_bytes = self.serial_connection.read(self.serial_connection.in_waiting)
+                return f"Raw bytes: {raw_bytes} | Decoded: '{raw_bytes.decode('utf-8', errors='ignore')}'"
+            else:
+                return "No data waiting in buffer"
+        except Exception as e:
+            return f"Error reading: {e}"
+
     def get_baud_rate(self) -> int:
         """Get baud rate from settings or use default."""
         try:
@@ -43,12 +59,17 @@ class SerialModule:
             from db import get_db
             db = next(get_db())
             val = get_setting(db, "baud_rate", self.baud_rate)
+            logger.info(f"Retrieved baud_rate from settings: {val} (type: {type(val)})")
             db.close()
             try:
-                return int(val)
+                baud_rate = int(val)
+                logger.info(f"Using baud rate: {baud_rate}")
+                return baud_rate
             except (ValueError, TypeError):
+                logger.warning(f"Invalid baud_rate value from settings: {val}, using default: {self.baud_rate}")
                 return self.baud_rate
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error getting baud_rate from settings: {e}, using default: {self.baud_rate}")
             return self.baud_rate
 
     def find_serial_port(self) -> Optional[str]:
@@ -71,7 +92,15 @@ class SerialModule:
             
         try:
             baud_rate = self.get_baud_rate()
-            ser = serial.Serial(port, baud_rate, timeout=1)
+            logger.info(f"Attempting to connect to {port} at {baud_rate} baud")
+            # Use explicit serial parameters like the working version
+            ser = serial.Serial(
+                port, 
+                baud_rate, 
+                timeout=1, 
+                rtscts=False,  # Disable RTS/CTS flow control
+                dsrdtr=False   # Disable DTR/DSR flow control
+            )
             logger.info(f"Connected to serial port {port} at {baud_rate} baud")
             return ser
         except Exception as e:
@@ -167,9 +196,12 @@ class SerialModule:
 
     def parse_pulse_ox_line(self, raw_line: str) -> Optional[dict]:
         """Parse a pulse oximeter data line."""
+        logger.debug(f"Parsing line: '{raw_line}' (length: {len(raw_line)})")
         parts = raw_line.strip().split()
+        logger.debug(f"Split into {len(parts)} parts: {parts}")
+        
         if len(parts) < 5:
-            logger.debug(f"Skipping invalid line: {raw_line}")
+            logger.debug(f"Skipping invalid line - need at least 5 parts, got {len(parts)}: {raw_line}")
             return None
 
         timestamp = f"{parts[0]} {parts[1]}"
@@ -177,6 +209,8 @@ class SerialModule:
         bpm_str = parts[3].rstrip("*")
         pa_str = parts[4]
         status = parts[5] if len(parts) > 5 else None
+
+        logger.debug(f"Extracted values - spo2_str: '{spo2_str}', bpm_str: '{bpm_str}', pa_str: '{pa_str}', status: '{status}'")
 
         sensor_data = {}
 
@@ -190,6 +224,7 @@ class SerialModule:
             perf = float(pa_str)
             sensor_data["perfusion"] = perf
         except ValueError:
+            logger.debug(f"Could not parse perfusion value: '{pa_str}'")
             pass
 
         if status:
@@ -198,6 +233,8 @@ class SerialModule:
         if sensor_data:
             logger.debug(f"Parsed sensor data: {sensor_data}")
             return sensor_data
+        else:
+            logger.warning(f"No valid sensor data extracted from line: '{raw_line}'")
         
         return None
 
@@ -230,14 +267,18 @@ class SerialModule:
 
                 # Read data from serial port
                 try:
-                    raw_line = self.serial_connection.readline().decode('utf-8', errors='ignore').strip()
+                    # Use ascii decoding like the working version
+                    raw_line = self.serial_connection.readline().decode('ascii', errors='ignore').strip()
                     if raw_line:
-                        logger.debug(f"Received raw data: {raw_line}")
+                        logger.info(f"Received raw data: '{raw_line}' (length: {len(raw_line)})")
                         
                         # Parse the data
                         sensor_data = self.parse_pulse_ox_line(raw_line)
                         if sensor_data:
                             self.publish_sensor_data(sensor_data, raw_line)
+                        else:
+                            logger.warning(f"Failed to parse line: '{raw_line}'")
+                    # Remove the debug message for empty reads to reduce log noise
                         
                 except serial.SerialException as e:
                     logger.warning(f"Serial exception: {e}")

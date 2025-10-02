@@ -198,16 +198,39 @@ html, body, #root {
 /* Modal Base Styles */
 .modal-overlay {
   position: fixed;
-  top: 10%; /* Start after the header */
-  left: 25%; /* Start after the values column */
+  top: 0;
+  left: 0;
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.95);
   display: flex;
-  justify-content: stretch;
-  align-items: stretch;
-  z-index: 1100;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
   backdrop-filter: blur(2px);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+/* Dashboard Modal Styles - Only cover chart areas */
+.dashboard-modal-overlay {
+  position: fixed;
+  top: 10vh; /* Start after header (10% of viewport height) */
+  left: 25vw; /* Leave 25% on left as requested */
+  right: 0;
+  bottom: 0;
+  width: 75vw; /* Explicitly set width to 75% of viewport */
+  height: 90vh; /* Explicitly set height to 90% of viewport */
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(1px);
+  margin: 0;
+  padding: 0;
+  border: none;
 }
 
 /* Mobile Modal Styles */
@@ -218,7 +241,17 @@ html, body, #root {
   bottom: 0;
   background-color: #161e2e;
   backdrop-filter: none;
-  z-index: 10000;
+}
+
+/* Dashboard Mobile Modal Styles */
+.dashboard-modal-overlay.mobile {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #161e2e;
+  backdrop-filter: none;
 }
 
 .modal-container {
@@ -1281,6 +1314,7 @@ html, body, #root {
 
 .modal-content {
   background-color: #1a202c;
+  border: none;
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   width: 90%;
@@ -2335,4 +2369,376 @@ html, body, #root {
     overflow: auto;
     -webkit-overflow-scrolling: touch;
   }
+}
+
+/* Business and Provider Management Styles */
+.businesses-grid,
+.providers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  padding: 0 0.5rem;
+}
+
+.business-card,
+.provider-card {
+  background: #3a3a3a;
+  border: 1px solid #4a4a4a;
+  border-radius: 12px;
+  padding: 2rem;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.business-card:hover,
+.provider-card:hover {
+  border-color: #6a6a6a;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.1);
+}
+
+.provider-card.primary {
+  border-color: #28a745;
+  background: linear-gradient(135deg, #2a2a2a 0%, #2d3f2d 100%);
+}
+
+.business-header,
+.provider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.business-header h3,
+.provider-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.business-type,
+.provider-type {
+  background: #007acc;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.provider-type.medical { background: #007acc; }
+.provider-type.therapy { background: #28a745; }
+.provider-type.rehab { background: #ffc107; color: #000; }
+.provider-type.school { background: #17a2b8; }
+.provider-type.pharmacy { background: #6f42c1; }
+.provider-type.specialist { background: #fd7e14; }
+.provider-type.emergency { background: #dc3545; }
+
+.business-type.hospital { background: #dc3545; }
+.business-type.pharmacy { background: #6f42c1; }
+.business-type.clinic { background: #007acc; }
+.business-type.rehab { background: #ffc107; color: #000; }
+.business-type.therapy { background: #28a745; }
+.business-type.school { background: #17a2b8; }
+.business-type.lab { background: #6c757d; }
+
+.primary-badge {
+  background: #28a745;
+  color: white;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+}
+
+.business-info,
+.provider-info {
+  margin-bottom: 1rem;
+}
+
+.info-item {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.info-item strong {
+  color: #e0e0e0;
+  margin-right: 0.5rem;
+}
+
+.address {
+  margin-left: 0.5rem;
+  color: #ccc;
+  line-height: 1.3;
+}
+
+.business-actions,
+.provider-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.business-form,
+.provider-form {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+  margin: 0;
+  box-shadow: none;
+}
+
+/* New dedicated modal styles for business and provider forms */
+.business-modal-overlay,
+.provider-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  backdrop-filter: blur(1px);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.business-modal-container,
+.provider-modal-container {
+  background: #3a3a3a;
+  border: none;
+  border-radius: 12px;
+  padding: 2.5rem;
+  width: 90%;
+  max-width: 900px;
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.business-form h3,
+.provider-form h3 {
+  margin: 0 0 2.5rem 0;
+  color: #fff;
+  font-size: 1.75rem;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+}
+
+.modal-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2.5rem;
+  margin: 0 0 2.5rem 0;
+  padding: 0;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-group label {
+  color: #e0e0e0;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  background: #2a2a2a;
+  border: 1px solid #555;
+  border-radius: 8px;
+  padding: 1rem;
+  color: #fff;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  margin: 0;
+  min-height: 44px;
+}
+
+.form-group select {
+  cursor: pointer;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #6a6a6a;
+  background: #323232;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: #999;
+}
+
+.form-group input[type="checkbox"] {
+  width: auto;
+  margin-right: 0.75rem;
+  transform: scale(1.2);
+}
+
+.form-actions {
+  display: flex;
+  gap: 1.25rem;
+  justify-content: flex-end;
+  padding-top: 1.5rem;
+  margin-top: 1rem;
+  border-top: 1px solid #4a4a4a;
+}
+
+.patient-selector {
+  background: #3a3a3a;
+  border: 1px solid #4a4a4a;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.patient-selector label {
+  color: #e0e0e0;
+  font-weight: 500;
+  white-space: nowrap;
+  font-size: 0.95rem;
+}
+
+.patient-select {
+  background: #2a2a2a;
+  border: 1px solid #555;
+  border-radius: 8px;
+  padding: 0.875rem;
+  color: #fff;
+  font-size: 0.95rem;
+  min-width: 250px;
+  transition: all 0.2s ease;
+}
+
+.patient-select:focus {
+  outline: none;
+  border-color: #6a6a6a;
+  background: #323232;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 768px) {
+  .businesses-grid,
+  .providers-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .business-form,
+  .provider-form {
+    width: 95%;
+    padding: 1rem;
+  }
+  
+  .patient-selector {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .patient-select {
+    width: 100%;
+    min-width: unset;
+  }
+}
+
+/* Admin Controls Styling */
+.admin-filters {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-input,
+.filter-select {
+  background: #3a3a3a;
+  border: 1px solid #4a4a4a;
+  border-radius: 8px;
+  padding: 0.75rem;
+  color: #fff;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.search-input {
+  min-width: 250px;
+}
+
+.search-input:focus,
+.filter-select:focus {
+  outline: none;
+  border-color: #6a6a6a;
+  background: #424242;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+}
+
+.search-input::placeholder {
+  color: #999;
 }

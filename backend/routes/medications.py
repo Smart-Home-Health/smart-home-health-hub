@@ -42,6 +42,8 @@ async def api_add_medication(data: dict = Body(...), db: Session = Depends(get_d
     end_date = data.get("end_date")  # Optional, not required in add form
     is_patient_specific = data.get("is_patient_specific", False)  # New field
     admin_patient_id = data.get("admin_patient_id")  # Admin can specify patient directly
+    prescriber_id = data.get("prescriber_id")  # Optional provider ID
+    pharmacy_id = data.get("pharmacy_id")  # Optional business ID
     
     # Determine patient_id
     patient_id = None
@@ -72,7 +74,9 @@ async def api_add_medication(data: dict = Body(...), db: Session = Depends(get_d
             end_date=end_date,
             as_needed=as_needed,
             notes=notes,
-            patient_id=patient_id
+            patient_id=patient_id,
+            prescriber_id=prescriber_id,
+            pharmacy_id=pharmacy_id
         )
         return {"id": med_id, "status": "success"}
     except Exception as e:
@@ -413,4 +417,67 @@ async def get_medication_names_endpoint(db: Session = Depends(get_db)):
         return JSONResponse(
             status_code=500,
             content={"detail": f"Error retrieving medication names: {str(e)}"}
+        )
+
+
+@router.get("/medications/providers")
+async def get_providers_for_medication(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Get providers that can prescribe medications for the given patient or all providers"""
+    from models import Provider
+    try:
+        if patient_id:
+            # Get providers associated with this patient
+            providers = db.query(Provider).filter(
+                Provider.patient_id == patient_id,
+                Provider.active == True
+            ).all()
+        else:
+            # Get all active providers
+            providers = db.query(Provider).filter(Provider.active == True).all()
+        
+        return {
+            "providers": [
+                {
+                    "id": p.id,
+                    "name": f"{p.first_name} {p.last_name}".strip(),
+                    "specialty": p.specialty,
+                    "type": p.provider_type
+                }
+                for p in providers
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting providers: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error retrieving providers: {str(e)}"}
+        )
+
+
+@router.get("/medications/pharmacies")
+async def get_pharmacies_for_medication(db: Session = Depends(get_db)):
+    """Get businesses that are pharmacies"""
+    from models import Business
+    try:
+        pharmacies = db.query(Business).filter(
+            Business.business_type == 'pharmacy',
+            Business.active == True
+        ).all()
+        
+        return {
+            "pharmacies": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "phone": p.phone,
+                    "address": f"{p.address_line1 or ''} {p.address_line2 or ''}".strip() or None
+                }
+                for p in pharmacies
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting pharmacies: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error retrieving pharmacies: {str(e)}"}
         )

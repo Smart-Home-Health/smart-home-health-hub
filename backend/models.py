@@ -27,6 +27,7 @@ class Patient(Base):
     care_task_logs = relationship('CareTaskLog', back_populates='patient')
     equipment = relationship('Equipment', back_populates='patient')
     nutrition_intake = relationship('NutritionIntake', back_populates='patient')
+    providers = relationship('Provider', back_populates='patient')
 
 class BloodPressure(Base):
     __tablename__ = 'blood_pressure'
@@ -182,6 +183,8 @@ class Medication(Base):
     __tablename__ = 'medication'
     id = Column(Integer, primary_key=True, autoincrement=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=True)  # NULL = global medication
+    prescriber_id = Column(Integer, ForeignKey('providers.id'), nullable=True)  # Provider who prescribed this medication
+    pharmacy_id = Column(Integer, ForeignKey('businesses.id'), nullable=True)  # Pharmacy business where medication is filled
     name = Column(String, nullable=False)
     concentration = Column(String)
     quantity = Column(Float, nullable=False)
@@ -197,6 +200,8 @@ class Medication(Base):
     
     # Relationships
     patient = relationship('Patient', foreign_keys=[patient_id])
+    prescriber = relationship('Provider', foreign_keys=[prescriber_id])
+    pharmacy = relationship('Business', foreign_keys=[pharmacy_id])
     schedules = relationship('MedicationSchedule', back_populates='medication', cascade='all, delete-orphan')
     administration_logs = relationship('MedicationLog', back_populates='medication', cascade='all, delete-orphan')
 
@@ -386,3 +391,71 @@ class NutritionIntake(Base):
     # Relationships
     patient = relationship('Patient', foreign_keys=[patient_id])
     care_task_log = relationship('CareTaskLog', back_populates='nutrition_intake')
+
+class Business(Base):
+    __tablename__ = 'businesses'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    business_type = Column(String, nullable=False)  # 'hospital', 'pharmacy', 'rehab', 'school', 'therapy', etc.
+    phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    
+    # Address information
+    address_line1 = Column(String, nullable=True)
+    address_line2 = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
+    country = Column(String, nullable=True, default='USA')
+    
+    # Business details
+    description = Column(Text, nullable=True)
+    hours_of_operation = Column(Text, nullable=True)  # JSON or text format
+    emergency_contact = Column(String, nullable=True)
+    
+    # Status
+    active = Column(Boolean, default=True, nullable=False)
+    
+    # Timestamps
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    
+    # Relationships
+    providers = relationship('Provider', back_populates='business')
+
+class Provider(Base):
+    __tablename__ = 'providers'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    business_id = Column(Integer, ForeignKey('businesses.id'), nullable=True)  # Optional association with business
+    
+    # Provider details
+    first_name = Column(String, nullable=False)
+    last_name = Column(String, nullable=False)
+    title = Column(String, nullable=True)  # Dr., RN, PT, OT, etc.
+    specialty = Column(String, nullable=True)  # Cardiologist, Physical Therapist, etc.
+    provider_type = Column(String, nullable=False)  # 'medical', 'therapy', 'rehab', 'school', 'pharmacy', etc.
+    
+    # Contact information
+    phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    fax = Column(String, nullable=True)
+    
+    # Professional details
+    license_number = Column(String, nullable=True)
+    npi_number = Column(String, nullable=True)  # National Provider Identifier
+    department = Column(String, nullable=True)
+    
+    # Notes and status
+    notes = Column(Text, nullable=True)
+    is_primary = Column(Boolean, default=False, nullable=False)  # Primary provider for this type
+    active = Column(Boolean, default=True, nullable=False)
+    
+    # Timestamps
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    
+    # Relationships
+    patient = relationship('Patient', back_populates='providers')
+    business = relationship('Business', back_populates='providers')

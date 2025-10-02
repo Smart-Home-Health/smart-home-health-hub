@@ -49,6 +49,18 @@ const AdminNav = () => {
           Equipment
         </Link>
         <Link 
+          to="/admin/providers" 
+          className={`nav-link ${location.pathname === '/admin/providers' ? 'active' : ''}`}
+        >
+          Providers
+        </Link>
+        <Link 
+          to="/admin/businesses" 
+          className={`nav-link ${location.pathname === '/admin/businesses' ? 'active' : ''}`}
+        >
+          Businesses
+        </Link>
+        <Link 
           to="/admin/monitoring" 
           className={`nav-link ${location.pathname === '/admin/monitoring' ? 'active' : ''}`}
         >

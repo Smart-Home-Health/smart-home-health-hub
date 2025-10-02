@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import config from '../../config';
+import { patientService } from '../../services/patients';
 
 const AdminCareTasks = () => {
   const [careTasks, setCareTasks] = useState([]);
@@ -9,6 +10,13 @@ const AdminCareTasks = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAddCategoryForm, setShowAddCategoryForm] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Add count state variables
+  const [activeCareTasksCount, setActiveCareTasksCount] = useState(0);
+  const [inactiveCareTasksCount, setInactiveCareTasksCount] = useState(0);
+  
+  // Current patient tracking for auto-refresh
+  const [currentPatient, setCurrentPatient] = useState(null);
   
   const [newCareTask, setNewCareTask] = useState({
     name: '',
@@ -26,14 +34,68 @@ const AdminCareTasks = () => {
   });
 
   useEffect(() => {
+    fetchCurrentPatient();
     fetchData();
     fetchCategories();
+    fetchCounts();
   }, [activeTab]);
+
+  // Auto-refresh data when current patient changes
+  useEffect(() => {
+    if (currentPatient) {
+      fetchData();
+      fetchCounts();
+    }
+  }, [currentPatient]);
+
+  // Poll for current patient changes every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchCurrentPatient();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchCurrentPatient = async () => {
+    try {
+      const newCurrentPatient = await patientService.getCurrentPatient();
+      // Only update state if patient actually changed
+      if (!currentPatient || currentPatient.id !== newCurrentPatient.id) {
+        setCurrentPatient(newCurrentPatient);
+      }
+    } catch (error) {
+      console.error('Error fetching current patient:', error);
+    }
+  };
+
+
+
+  const fetchCounts = async () => {
+    try {
+      // Use current patient for filtering (relying on backend's get_current_patient)
+      const activeResponse = await fetch(`${config.apiUrl}/api/care-tasks/active`);
+      const inactiveResponse = await fetch(`${config.apiUrl}/api/care-tasks/inactive`);
+      
+      if (activeResponse.ok) {
+        const activeData = await activeResponse.json();
+        setActiveCareTasksCount(activeData.care_tasks?.length || 0);
+      }
+      
+      if (inactiveResponse.ok) {
+        const inactiveData = await inactiveResponse.json();
+        setInactiveCareTasksCount(inactiveData.care_tasks?.length || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching care task counts:', error);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
+      // Use current patient endpoints (backend will use get_current_patient)
       const endpoint = activeTab === 'active' ? '/api/care-tasks/active' : '/api/care-tasks/inactive';
       const response = await fetch(`${config.apiUrl}${endpoint}`);
       
@@ -42,7 +104,7 @@ const AdminCareTasks = () => {
       }
       
       const data = await response.json();
-      setCareTasks(Array.isArray(data) ? data : []);
+      setCareTasks(data.care_tasks || []);
     } catch (error) {
       console.error('Error fetching care tasks:', error);
       setError(`Failed to fetch care tasks: ${error.message}`);
@@ -61,7 +123,7 @@ const AdminCareTasks = () => {
       }
       
       const data = await response.json();
-      setCategories(Array.isArray(data) ? data : []);
+      setCategories(data.categories || []);
     } catch (error) {
       console.error('Error fetching categories:', error);
       setCategories([]);
@@ -90,6 +152,7 @@ const AdminCareTasks = () => {
           notes: ''
         });
         fetchData();
+        fetchCounts();
       } else {
         console.error('Failed to add care task');
       }
@@ -133,6 +196,7 @@ const AdminCareTasks = () => {
 
       if (response.ok) {
         fetchData();
+        fetchCounts();
       } else {
         console.error('Failed to toggle care task status');
       }
@@ -150,6 +214,7 @@ const AdminCareTasks = () => {
 
         if (response.ok) {
           fetchData();
+          fetchCounts();
         } else {
           console.error('Failed to delete care task');
         }
@@ -211,13 +276,13 @@ const AdminCareTasks = () => {
                 className={`btn ${activeTab === 'active' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setActiveTab('active')}
               >
-                Active ({careTasks.length})
+                Active ({activeCareTasksCount})
               </button>
               <button 
                 className={`btn ${activeTab === 'inactive' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setActiveTab('inactive')}
               >
-                Inactive
+                Inactive ({inactiveCareTasksCount})
               </button>
               <button 
                 className={`btn ${activeTab === 'categories' ? 'btn-primary' : 'btn-secondary'}`}

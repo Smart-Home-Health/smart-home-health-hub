@@ -64,6 +64,9 @@ def get_care_task_schedules(db: Session, care_task_id, patient_id=None):
                     (CareTaskSchedule.patient_id == active_patient.id) | 
                     (CareTaskSchedule.patient_id.is_(None))
                 )
+        elif patient_id == -1:
+            # Admin mode: show all schedules regardless of patient
+            pass  # No patient filter
         else:
             # Filter to show schedules for specific patient OR global schedules
             query = query.filter(
@@ -110,6 +113,9 @@ def get_all_care_task_schedules(db: Session, active_only=True, patient_id=None):
                     (CareTaskSchedule.patient_id == active_patient.id) | 
                     (CareTaskSchedule.patient_id.is_(None))
                 )
+        elif patient_id == -1:
+            # Admin mode: show all schedules regardless of patient
+            pass  # No patient filter
         else:
             # Show schedules for specific patient OR global schedules
             query = query.filter(
@@ -233,6 +239,9 @@ def get_scheduled_care_tasks_for_date(db: Session, target_date=None, patient_id=
                     (CareTaskSchedule.patient_id == active_patient.id) | 
                     (CareTaskSchedule.patient_id.is_(None))
                 )
+        elif patient_id == -1:
+            # Admin mode: show all schedules regardless of patient
+            pass  # No patient filter
         else:
             # Show schedules for specific patient OR global schedules
             query = query.filter(

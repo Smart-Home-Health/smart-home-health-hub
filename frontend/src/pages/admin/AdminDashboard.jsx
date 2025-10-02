@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import config from '../../config';
+import { useAdminPatient } from '../../contexts/AdminPatientContext';
 
 const AdminDashboard = () => {
+  const { selectedPatientId } = useAdminPatient();
   const [stats, setStats] = useState({
     totalMedications: 0,
     activeMedications: 0,
@@ -10,7 +12,11 @@ const AdminDashboard = () => {
     totalEquipment: 0,
     equipmentDue: 0,
     totalAlerts: 0,
-    unacknowledgedAlerts: 0
+    unacknowledgedAlerts: 0,
+    totalProviders: 0,
+    activeProviders: 0,
+    totalBusinesses: 0,
+    activeBusinesses: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -38,15 +44,44 @@ const AdminDashboard = () => {
         // Fetch alert stats
         const alertsCount = await fetch(`${config.apiUrl}/api/monitoring/alerts/count`).then(r => r.json());
 
+        // Fetch provider stats for selected patient only
+        let providerStats = { total: 0, active: 0 };
+        if (selectedPatientId) {
+          try {
+            const providersResponse = await fetch(`${config.apiUrl}/api/providers/patient/${selectedPatientId}`);
+            if (providersResponse.ok) {
+              const providers = await providersResponse.json();
+              providerStats = {
+                total: providers.length,
+                active: providers.filter(p => p.active).length
+              };
+            }
+          } catch (error) {
+            console.error('Error fetching provider stats:', error);
+          }
+        }
+        
+        // Fetch business stats
+        const [allBusinesses, inactiveBusinesses] = await Promise.all([
+          fetch(`${config.apiUrl}/api/businesses?active_only=false`).then(r => r.json()).catch(() => []),
+          fetch(`${config.apiUrl}/api/businesses?active_only=false`).then(r => r.json()).then(businesses => 
+            businesses.filter(b => !b.active)
+          ).catch(() => [])
+        ]);
+
         setStats({
           totalMedications: activeMeds.length + inactiveMeds.length,
           activeMedications: activeMeds.length,
-          totalCareTask: activeTasks.length + inactiveTasks.length,
-          activeCareTask: activeTasks.length,
+          totalCareTask: (activeTasks.care_tasks?.length || 0) + (inactiveTasks.care_tasks?.length || 0),
+          activeCareTask: activeTasks.care_tasks?.length || 0,
           totalEquipment: equipment.length,
           equipmentDue: equipmentDue.count || 0,
           totalAlerts: 0, // We might need to add this endpoint
-          unacknowledgedAlerts: alertsCount.count || 0
+          unacknowledgedAlerts: alertsCount.count || 0,
+          totalProviders: providerStats.total,
+          activeProviders: providerStats.active,
+          totalBusinesses: allBusinesses.length,
+          activeBusinesses: allBusinesses.length - inactiveBusinesses.length
         });
       } catch (error) {
         console.error('Error fetching stats:', error);
@@ -56,7 +91,7 @@ const AdminDashboard = () => {
     };
 
     fetchStats();
-  }, []);
+  }, [selectedPatientId]);
 
   if (loading) {
     return <div className="admin-page">
@@ -135,6 +170,36 @@ const AdminDashboard = () => {
           <div className="admin-actions">
             <a href="/admin/monitoring" className="btn btn-danger">
               View Alerts
+            </a>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <h3 className="admin-card-title">Providers</h3>
+          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#6f42c1', marginBottom: '1rem' }}>
+            {stats.activeProviders} / {stats.totalProviders}
+          </div>
+          <p style={{ color: '#666', marginBottom: '1rem' }}>
+            Active providers out of total registered
+          </p>
+          <div className="admin-actions">
+            <a href="/admin/providers" className="btn btn-primary">
+              Manage Providers
+            </a>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <h3 className="admin-card-title">Businesses</h3>
+          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#20c997', marginBottom: '1rem' }}>
+            {stats.activeBusinesses} / {stats.totalBusinesses}
+          </div>
+          <p style={{ color: '#666', marginBottom: '1rem' }}>
+            Active businesses (hospitals, pharmacies, etc.)
+          </p>
+          <div className="admin-actions">
+            <a href="/admin/businesses" className="btn btn-info">
+              Manage Businesses
             </a>
           </div>
         </div>

@@ -14,6 +14,8 @@ const AdminMedications = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMedication, setEditingMedication] = useState(null);
   const [showScheduleFor, setShowScheduleFor] = useState(null);
+  const [providers, setProviders] = useState([]);
+  const [pharmacies, setPharmacies] = useState([]);
   
   const [newMedication, setNewMedication] = useState({
     name: '',
@@ -25,14 +27,48 @@ const AdminMedications = () => {
     end_date: '',
     as_needed: false,
     notes: '',
-    is_patient_specific: false
+    is_patient_specific: false,
+    prescriber_id: '',
+    pharmacy_id: ''
   });
 
   useEffect(() => {
     fetchData();
     fetchPatients();
     fetchCurrentPatient();
+    fetchProviders();
+    fetchPharmacies();
   }, [activeTab, selectedPatientId]);
+
+  const fetchProviders = async () => {
+    try {
+      // Fetch providers for selected patient if available
+      const url = selectedPatientId ? 
+        `${config.apiUrl}/api/medications/providers?patient_id=${selectedPatientId}` :
+        `${config.apiUrl}/api/medications/providers`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        setProviders(data.providers || []);
+      }
+    } catch (error) {
+      console.error('Error fetching providers:', error);
+      setProviders([]);
+    }
+  };
+
+  const fetchPharmacies = async () => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/medications/pharmacies`);
+      if (response.ok) {
+        const data = await response.json();
+        setPharmacies(data.pharmacies || []);
+      }
+    } catch (error) {
+      console.error('Error fetching pharmacies:', error);
+      setPharmacies([]);
+    }
+  };
 
   const fetchCurrentPatient = async () => {
     try {
@@ -124,7 +160,9 @@ const AdminMedications = () => {
           end_date: '',
           as_needed: false,
           notes: '',
-          is_patient_specific: false
+          is_patient_specific: false,
+          prescriber_id: '',
+          pharmacy_id: ''
         });
         fetchData();
       } else {
@@ -210,6 +248,15 @@ const AdminMedications = () => {
       minHeight: '100%',
       boxSizing: 'border-box'
     }}>
+      <style>
+        {`
+          .admin-page input,
+          .admin-page select,
+          .admin-page textarea {
+            color: #2c3e50 !important;
+          }
+        `}
+      </style>
       <div className="admin-page-header" style={{ marginBottom: '2rem' }}>
         <h1 className="admin-page-title" style={{ 
           fontSize: '2.5rem', 
@@ -706,6 +753,91 @@ const AdminMedications = () => {
                           </span>
                         )}
                       </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Prescriber and Pharmacy Section */}
+                <div style={{ marginBottom: '2rem' }}>
+                  <h4 style={{ 
+                    fontSize: '1.1rem', 
+                    fontWeight: '600', 
+                    color: '#2c3e50',
+                    marginBottom: '1rem',
+                    paddingBottom: '0.5rem',
+                    borderBottom: '1px solid #e9ecef'
+                  }}>
+                    Prescriber & Pharmacy
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ 
+                        display: 'block', 
+                        marginBottom: '0.5rem', 
+                        fontWeight: '600',
+                        color: '#2c3e50',
+                        fontSize: '0.9rem'
+                      }}>
+                        Prescriber (Optional)
+                      </label>
+                      <select
+                        value={newMedication.prescriber_id}
+                        onChange={(e) => setNewMedication({ ...newMedication, prescriber_id: e.target.value })}
+                        style={{ 
+                          width: '100%', 
+                          padding: '0.75rem', 
+                          border: '2px solid #e9ecef', 
+                          borderRadius: '8px',
+                          fontSize: '0.9rem',
+                          fontFamily: 'inherit',
+                          transition: 'border-color 0.2s ease',
+                          outline: 'none',
+                          backgroundColor: '#ffffff',
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <option value="">Select a prescriber</option>
+                        {providers.map(provider => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.name} {provider.specialty ? `(${provider.specialty})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ 
+                        display: 'block', 
+                        marginBottom: '0.5rem', 
+                        fontWeight: '600',
+                        color: '#2c3e50',
+                        fontSize: '0.9rem'
+                      }}>
+                        Pharmacy (Optional)
+                      </label>
+                      <select
+                        value={newMedication.pharmacy_id}
+                        onChange={(e) => setNewMedication({ ...newMedication, pharmacy_id: e.target.value })}
+                        style={{ 
+                          width: '100%', 
+                          padding: '0.75rem', 
+                          border: '2px solid #e9ecef', 
+                          borderRadius: '8px',
+                          fontSize: '0.9rem',
+                          fontFamily: 'inherit',
+                          transition: 'border-color 0.2s ease',
+                          outline: 'none',
+                          backgroundColor: '#ffffff',
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <option value="">Select a pharmacy</option>
+                        {pharmacies.map(pharmacy => (
+                          <option key={pharmacy.id} value={pharmacy.id}>
+                            {pharmacy.name}
+                            {pharmacy.address && ` - ${pharmacy.address}`}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </div>

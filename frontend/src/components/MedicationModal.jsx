@@ -27,8 +27,14 @@ const MedicationModal = ({ onClose }) => {
     startDate: '',
     asNeeded: false,
     notes: '',
-    isPatientSpecific: false
+    isPatientSpecific: false,
+    prescriberId: '',
+    pharmacyId: ''
   });
+
+  // Provider and pharmacy state
+  const [providers, setProviders] = useState([]);
+  const [pharmacies, setPharmacies] = useState([]);
 
   // Confirmation modal state
   const [confirmModal, setConfirmModal] = useState({ open: false, item: null });
@@ -65,10 +71,58 @@ const MedicationModal = ({ onClose }) => {
     fetchMedications();
     fetchPatients();
     fetchCurrentPatient();
+    fetchPharmacies();
     if (tab === 'scheduled') {
       fetchScheduledMedications();
     }
   }, [tab]);
+
+  // Separate useEffect for providers that depends on currentPatientId
+  useEffect(() => {
+    console.log('Fetching providers for currentPatientId:', currentPatientId); // Debug log
+    fetchProviders();
+  }, [currentPatientId]);
+
+  // Fetch pharmacies on component mount
+  useEffect(() => {
+    console.log('Fetching pharmacies on component mount'); // Debug log
+    fetchPharmacies();
+  }, []);
+
+  const fetchProviders = async () => {
+    try {
+      // Fetch providers for current patient if available
+      const url = currentPatientId ? 
+        `${config.apiUrl}/api/medications/providers?patient_id=${currentPatientId}` :
+        `${config.apiUrl}/api/medications/providers`;
+      console.log('Fetching providers from:', url); // Debug log
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Providers fetched:', data.providers); // Debug log
+        setProviders(data.providers || []);
+      }
+    } catch (error) {
+      console.error('Error fetching providers:', error);
+      setProviders([]);
+    }
+  };
+
+  const fetchPharmacies = async () => {
+    try {
+      const url = `${config.apiUrl}/api/medications/pharmacies`;
+      console.log('Fetching pharmacies from:', url); // Debug log
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Pharmacies fetched:', data.pharmacies); // Debug log
+        setPharmacies(data.pharmacies || []);
+      }
+    } catch (error) {
+      console.error('Error fetching pharmacies:', error);
+      setPharmacies([]);
+    }
+  };
 
   const fetchPatients = async () => {
     try {
@@ -170,7 +224,9 @@ const MedicationModal = ({ onClose }) => {
       startDate: '',
       asNeeded: false,
       notes: '',
-      isPatientSpecific: false
+      isPatientSpecific: false,
+      prescriberId: '',
+      pharmacyId: ''
     });
     setEditingMed(null);
     // Don't automatically hide the form - let the caller decide
@@ -186,7 +242,19 @@ const MedicationModal = ({ onClose }) => {
         const response = await fetch(`${config.apiUrl}/api/medications/${editingMed.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
+          body: JSON.stringify({
+            name: formData.name,
+            concentration: formData.concentration,
+            quantity: formData.quantity,
+            quantity_unit: formData.quantityUnit,
+            instructions: formData.instructions,
+            start_date: formData.startDate,
+            as_needed: formData.asNeeded,
+            notes: formData.notes,
+            is_patient_specific: formData.isPatientSpecific,
+            prescriber_id: formData.prescriberId || null,
+            pharmacy_id: formData.pharmacyId || null
+          })
         });
         
         if (!response.ok) {
@@ -206,7 +274,9 @@ const MedicationModal = ({ onClose }) => {
             start_date: formData.startDate,
             as_needed: formData.asNeeded,
             notes: formData.notes,
-            is_patient_specific: formData.isPatientSpecific
+            is_patient_specific: formData.isPatientSpecific,
+            prescriber_id: formData.prescriberId || null,
+            pharmacy_id: formData.pharmacyId || null
           })
         });
         
@@ -230,6 +300,7 @@ const MedicationModal = ({ onClose }) => {
   };
 
   const handleEdit = (med) => {
+    console.log('Editing medication:', med); // Debug log
     setFormData({
       name: med.name,
       concentration: med.concentration || '',
@@ -239,7 +310,9 @@ const MedicationModal = ({ onClose }) => {
       startDate: med.start_date || '',
       asNeeded: med.as_needed || false,
       notes: med.notes || '',
-      isPatientSpecific: med.patient_id !== null
+      isPatientSpecific: med.patient_id !== null,
+      prescriberId: med.prescriber_id ? String(med.prescriber_id) : '',
+      pharmacyId: med.pharmacy_id ? String(med.pharmacy_id) : ''
     });
     setEditingMed(med);
     setShowAddForm(true);
@@ -694,6 +767,65 @@ const MedicationModal = ({ onClose }) => {
               (uncheck for shared/global medication)
             </span>
           </label>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
+            Prescriber (Optional)
+          </label>
+          {/* Debug info */}
+          {console.log('Current prescriberId:', formData.prescriberId, 'Available providers:', providers)}
+          <select
+            value={formData.prescriberId}
+            onChange={(e) => setFormData(prev => ({ ...prev, prescriberId: e.target.value }))}
+            style={{
+              width: '100%',
+              padding: '12px',
+              border: '2px solid #ddd',
+              borderRadius: '6px',
+              fontSize: '14px',
+              boxSizing: 'border-box',
+              backgroundColor: '#f8f9fa',
+              color: '#333'
+            }}
+          >
+            <option value="">Select a prescriber</option>
+            {providers.map(provider => (
+              <option key={provider.id} value={provider.id}>
+                {provider.name} {provider.specialty ? `(${provider.specialty})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
+            Pharmacy (Optional)
+          </label>
+          {/* Debug info */}
+          {console.log('Current pharmacyId:', formData.pharmacyId, 'Available pharmacies:', pharmacies)}
+          <select
+            value={formData.pharmacyId}
+            onChange={(e) => setFormData(prev => ({ ...prev, pharmacyId: e.target.value }))}
+            style={{
+              width: '100%',
+              padding: '12px',
+              border: '2px solid #ddd',
+              borderRadius: '6px',
+              fontSize: '14px',
+              boxSizing: 'border-box',
+              backgroundColor: '#f8f9fa',
+              color: '#333'
+            }}
+          >
+            <option value="">Select a pharmacy</option>
+            {pharmacies.map(pharmacy => (
+              <option key={pharmacy.id} value={pharmacy.id}>
+                {pharmacy.name}
+                {pharmacy.address && ` - ${pharmacy.address}`}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>

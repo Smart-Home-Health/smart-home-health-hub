@@ -12,12 +12,14 @@ logger = logging.getLogger('crud')
 
 
 # --- Medication CRUD ---
-def add_medication(db: Session, name, concentration=None, quantity=None, quantity_unit=None, instructions=None, start_date=None, end_date=None, as_needed=False, notes=None, active=True, patient_id=None):
+def add_medication(db: Session, name, concentration=None, quantity=None, quantity_unit=None, instructions=None, start_date=None, end_date=None, as_needed=False, notes=None, active=True, patient_id=None, prescriber_id=None, pharmacy_id=None):
     """
     Add a new medication to the database.
     
     Args:
         patient_id: If provided, medication is patient-specific. If None, medication is global.
+        prescriber_id: Optional provider ID who prescribed this medication
+        pharmacy_id: Optional business ID representing the pharmacy
     """
     now = datetime.now()
     medication = Medication(
@@ -32,6 +34,8 @@ def add_medication(db: Session, name, concentration=None, quantity=None, quantit
         as_needed=as_needed,
         notes=notes,
         active=active,
+        prescriber_id=prescriber_id,
+        pharmacy_id=pharmacy_id,
         created_at=now,
         updated_at=now
     )
@@ -81,6 +85,8 @@ def get_active_medications(db: Session):
                 'created_at': med.created_at.isoformat() if med.created_at else None,
                 'updated_at': med.updated_at.isoformat() if med.updated_at else None,
                 'is_global': med.patient_id is None,
+                'prescriber_id': med.prescriber_id,
+                'pharmacy_id': med.pharmacy_id,
                 'schedules': []
             }
             for med in medications
@@ -128,6 +134,8 @@ def get_inactive_medications(db: Session):
                 'created_at': med.created_at.isoformat() if med.created_at else None,
                 'updated_at': med.updated_at.isoformat() if med.updated_at else None,
                 'is_global': med.patient_id is None,
+                'prescriber_id': med.prescriber_id,
+                'pharmacy_id': med.pharmacy_id,
                 'schedules': []
             }
             for med in medications
