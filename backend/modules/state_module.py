@@ -360,14 +360,42 @@ class StateModule:
             logger.error(f"Error ending pulse ox alert: {e}")
 
     async def _publish_sensor_data_to_mqtt(self, sensor_data: dict):
-        """Publish sensor data to MQTT via MQTT module."""
-        # This would typically trigger an event that the MQTT module subscribes to
-        # For now, we'll use a direct call pattern
+        """Publish sensor data to MQTT via MQTT publisher."""
         try:
-            # We could publish a "MQTTPublishRequest" event instead
-            from modules.mqtt_module import MQTTModule
-            # This is not ideal - better to use event bus for this too
-            pass  # TODO: Implement proper event-based MQTT publishing
+            # Get the MQTT publisher from the global modules
+            from main import get_modules
+            modules = get_modules()
+            mqtt_module = modules.get("mqtt")
+            
+            if mqtt_module and mqtt_module.mqtt_publisher:
+                publisher = mqtt_module.mqtt_publisher
+                
+                # Publish each sensor value to its MQTT topic
+                for key, value in sensor_data.items():
+                    if value is not None:
+                        # Map sensor keys to vital types
+                        vital_type = key
+                        
+                        # Create payload based on vital type
+                        if vital_type in ["spo2", "bpm", "perfusion"]:
+                            # These are generic vitals, use 'value' key
+                            payload = {"value": value}
+                        elif vital_type in ["skin_temp", "body_temp"]:
+                            # Map to temperature with proper keys
+                            payload = {vital_type: value}
+                            vital_type = "temperature"
+                        else:
+                            # Generic vital format
+                            payload = {"value": value}
+                        
+                        # Publish to MQTT
+                        success = publisher.publish_vital_data(vital_type, payload)
+                        if success:
+                            logger.debug(f"Published {vital_type} to MQTT: {payload}")
+                        else:
+                            logger.debug(f"MQTT publish skipped for {vital_type} (disabled or not available)")
+            else:
+                logger.debug("MQTT publisher not available for sensor data")
             
         except Exception as e:
             logger.error(f"Error publishing to MQTT: {e}")

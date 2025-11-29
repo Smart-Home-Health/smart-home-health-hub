@@ -294,8 +294,12 @@ class MQTTModule:
 
     def get_status(self) -> dict:
         """Get current status of the MQTT module."""
+        is_connected = False
+        if self.mqtt_manager:
+            is_connected = self.mqtt_manager.is_connected()
+        
         return {
-            "connected": self.is_connected,
+            "connected": is_connected,
             "manager_available": self.mqtt_manager is not None,
             "publisher_available": self.mqtt_publisher is not None and self.mqtt_publisher.is_available()
         }

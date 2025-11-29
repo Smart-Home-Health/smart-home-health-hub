@@ -158,19 +158,26 @@ async def restart_mqtt_if_enabled(db: Session):
     # Import at function level to avoid circular imports
     import asyncio
     from main import get_modules
-    from bus import publish_event
     
     try:
+        # Get event bus from modules
+        modules = get_modules()
+        event_bus = modules.get("event_bus")
+        
         # Check if MQTT is enabled
         from mqtt.settings import is_mqtt_enabled
         
         if not is_mqtt_enabled():
             # Send event to stop MQTT
-            publish_event("mqtt_control", {"action": "stop"})
+            if event_bus:
+                event = {"type": "mqtt_control", "data": {"action": "stop"}}
+                asyncio.create_task(event_bus.publish(event, topic="mqtt_control"))
             return "MQTT disabled - stop requested"
         
         # Send event to restart MQTT with new settings
-        publish_event("mqtt_control", {"action": "restart"})
+        if event_bus:
+            event = {"type": "mqtt_control", "data": {"action": "restart"}}
+            asyncio.create_task(event_bus.publish(event, topic="mqtt_control"))
         return "MQTT restart requested through event system"
         
     except Exception as e:
@@ -188,11 +195,32 @@ async def test_mqtt_connection(settings: dict):
     try:
         import paho.mqtt.client as mqtt
         
-        test_client = mqtt.Client(client_id=settings.get('mqtt_client_id', 'test_client'))
-        
-        # Set credentials if provided
+        broker = settings.get('mqtt_broker', 'localhost')
+        port = settings.get('mqtt_port', 1883)
+        client_id = settings.get('mqtt_client_id', 'test_client')
         username = settings.get('mqtt_username')
         password = settings.get('mqtt_password')
+        
+        logger.info(f"Testing MQTT connection to {broker}:{port} with client_id={client_id}")
+        
+        # Validate required settings
+        if not broker:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "MQTT broker address is required"}
+            )
+        
+        try:
+            port = int(port)
+        except (ValueError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={"detail": f"Invalid port number: {port}"}
+            )
+        
+        test_client = mqtt.Client(client_id=client_id)
+        
+        # Set credentials if provided
         if username and password:
             test_client.username_pw_set(username, password)
         
@@ -201,8 +229,18 @@ async def test_mqtt_connection(settings: dict):
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
                 connection_result["connected"] = True
+                logger.info(f"MQTT test connection successful to {broker}:{port}")
             else:
-                connection_result["error"] = f"Connection failed with code {rc}"
+                error_codes = {
+                    1: "Connection refused - incorrect protocol version",
+                    2: "Connection refused - invalid client identifier",
+                    3: "Connection refused - server unavailable",
+                    4: "Connection refused - bad username or password",
+                    5: "Connection refused - not authorized"
+                }
+                error_msg = error_codes.get(rc, f"Unknown error code {rc}")
+                connection_result["error"] = error_msg
+                logger.error(f"MQTT test connection failed: {error_msg}")
         
         def on_disconnect(client, userdata, rc):
             connection_result["connected"] = False
@@ -210,22 +248,28 @@ async def test_mqtt_connection(settings: dict):
         test_client.on_connect = on_connect
         test_client.on_disconnect = on_disconnect
         
-        # Try to connect
-        broker = settings.get('mqtt_broker', 'localhost')
-        port = int(settings.get('mqtt_port', 1883))
-        
-        test_client.connect(broker, port, 10)
+        # Try to connect with longer timeout
+        logger.info(f"Attempting connection to {broker}:{port}...")
+        test_client.connect(broker, port, 60)  # 60 second keepalive
         test_client.loop_start()
         
-        # Wait for connection attempt
-        time.sleep(2)
+        # Wait longer for connection attempt (some brokers are slow)
+        import time
+        max_wait = 5  # Wait up to 5 seconds
+        waited = 0
+        while waited < max_wait and not connection_result["connected"] and not connection_result["error"]:
+            time.sleep(0.5)
+            waited += 0.5
+        
         test_client.loop_stop()
         
         if connection_result["connected"]:
             test_client.disconnect()
+            logger.info("MQTT test connection successful")
             return {"status": "success", "message": "MQTT connection successful"}
         else:
-            error_msg = connection_result["error"] or "Connection failed"
+            error_msg = connection_result["error"] or "Connection timed out - broker may be unreachable"
+            logger.warning(f"MQTT test failed: {error_msg}")
             return JSONResponse(status_code=400, content={"detail": error_msg})
             
     except Exception as e:
@@ -242,10 +286,13 @@ async def send_mqtt_discovery_endpoint(request: dict):
     try:
         test_mode = request.get('test_mode', True)
         
-        # Get the current MQTT client (if connected)
-        from main import mqtt_client_ref
-        if mqtt_client_ref and mqtt_client_ref.is_connected():
-            send_mqtt_discovery(mqtt_client_ref, test_mode=test_mode)
+        # Get the MQTT manager from modules
+        from main import get_modules
+        modules = get_modules()
+        mqtt_module = modules.get("mqtt")
+        
+        if mqtt_module and mqtt_module.mqtt_manager and mqtt_module.mqtt_manager.is_connected():
+            send_mqtt_discovery(mqtt_module.mqtt_manager.client, test_mode=test_mode)
             return {"message": "MQTT discovery messages sent successfully"}
         else:
             return JSONResponse(

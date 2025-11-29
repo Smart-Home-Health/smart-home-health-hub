@@ -17,6 +17,11 @@ class MQTTManager:
         self.client: Optional[mqtt.Client] = None
         self.settings: Dict[str, Any] = {}
         self.message_handlers: Dict[str, Callable] = {}
+        self._is_connected = False
+        
+    def is_connected(self) -> bool:
+        """Check if MQTT client is connected"""
+        return self._is_connected
         
     def set_message_handler(self, vital_type: str, handler: Callable):
         """Register a message handler for a specific vital type"""
@@ -67,6 +72,7 @@ class MQTTManager:
     def _on_connect(self, client, userdata, flags, rc):
         """Handle MQTT connection"""
         if rc == 0:
+            self._is_connected = True
             logger.info(f"Connected to MQTT Broker at {self.settings['broker']}:{self.settings['port']}")
             
             # Subscribe to all enabled listen topics
@@ -77,10 +83,12 @@ class MQTTManager:
                     client.subscribe(topic_path)
                     logger.info(f"Subscribed to {topic_path}")
         else:
+            self._is_connected = False
             logger.error(f"Failed to connect to MQTT Broker, code {rc}")
 
     def _on_disconnect(self, client, userdata, rc):
         """Handle MQTT disconnection"""
+        self._is_connected = False
         if rc != 0:
             logger.warning("Unexpected MQTT disconnection")
         else:

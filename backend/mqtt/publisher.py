@@ -81,7 +81,7 @@ class MQTTPublisher:
         Returns:
             bool: True if published successfully
         """
-        logger.info(f"Publishing {vital_type} data to MQTT: {vital_data}")
+        logger.debug(f"Publishing {vital_type} data to MQTT: {vital_data}")
         
         if not self.is_available():
             logger.warning(f"MQTT not available for {vital_type} publish")
@@ -103,7 +103,7 @@ class MQTTPublisher:
             result = self.mqtt_client.publish(broadcast_topic, json_payload, retain=False)
             
             if result.rc == 0:
-                logger.info(f"Published {vital_type} data to {broadcast_topic}")
+                logger.debug(f"Published {vital_type} to {broadcast_topic}")
                 return True
             else:
                 logger.error(f"Failed to publish {vital_type} data: rc={result.rc}")
