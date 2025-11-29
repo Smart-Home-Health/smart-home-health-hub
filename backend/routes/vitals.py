@@ -86,7 +86,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                     if bp_ids:
                         vitals_saved.append({
                             'type': 'blood_pressure',
-                            'data': {'systolic': systolic, 'diastolic': diastolic, 'map': map_bp}
+                            'data': {'systolic_bp': systolic, 'diastolic_bp': diastolic, 'map_bp': map_bp, 'notes': notes}
                         })
                     
             # Handle temperature
@@ -99,7 +99,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                 if temp_ids:
                     vitals_saved.append({
                         'type': 'temperature',
-                        'data': {'temperature': body_temp}
+                        'data': {'body_temp': body_temp, 'skin_temp': skin_temp, 'notes': notes}
                     })
                 
             # Handle bathroom
@@ -112,7 +112,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                 if vital_id:
                     vitals_saved.append({
                         'type': 'bathroom',
-                        'data': {'type': bathroom_type, 'size': bathroom_size}
+                        'data': {'bathroom_type': bathroom_type, 'bathroom_size': bathroom_size, 'value': size_numeric, 'notes': notes}
                     })
             
             # Handle nutrition data (from frontend format)
@@ -125,14 +125,14 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                     if cal_id:
                         vitals_saved.append({
                             'type': 'calories', 
-                            'data': {'calories': calories}
+                            'data': {'value': calories, 'notes': notes}
                         })
                 if water is not None and water != "":
                     water_id = save_vital(db, "water", water, datetime_val, notes)
                     if water_id:
                         vitals_saved.append({
                             'type': 'water',
-                            'data': {'water': water}
+                            'data': {'value': water, 'notes': notes}
                         })
             
             # Handle weight
@@ -142,7 +142,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                 if weight_id:
                     vitals_saved.append({
                         'type': 'weight',
-                        'data': {'weight': weight}
+                        'data': {'value': weight, 'notes': notes}
                     })
                 
             # Dynamically handle any remaining vitals (excluding already processed ones)
@@ -153,8 +153,8 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                     if vital_id:
                         vitals_saved.append({
                             'type': key,
-                        'data': {key: value}
-                    })
+                            'data': {'value': value, 'notes': notes}
+                        })
             
         # Publish vitals events to trigger WebSocket broadcast and MQTT publishing
         for vital in vitals_saved:
