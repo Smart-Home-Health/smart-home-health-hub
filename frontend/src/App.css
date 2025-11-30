@@ -2176,6 +2176,8 @@ html, body, #root {
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: hidden; /* Hide horizontal scrollbar */
 }
 
 .mobile-menu-item {

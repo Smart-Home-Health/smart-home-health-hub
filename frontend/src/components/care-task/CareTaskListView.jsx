@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 const CareTaskListView = ({ 
   tasks, 
@@ -9,51 +9,73 @@ const CareTaskListView = ({
   setShowScheduleFor,
   type = 'active' // 'active' or 'inactive'
 }) => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
+
   const renderTaskCard = (task) => (
     <div key={task.id} className="medication-card" style={{
       backgroundColor: '#fff',
       borderRadius: '8px',
-      padding: '16px',
+      padding: isMobile ? '12px' : '16px',
       marginBottom: '12px',
       boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
       border: `2px solid ${task.active ? '#28a745' : '#6c757d'}`
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ flex: 1 }}>
-          <h4 style={{ margin: '0 0 8px 0', color: '#333', fontSize: '18px', fontWeight: '600' }}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ marginBottom: isMobile ? '12px' : '0' }}>
+          <h4 style={{ margin: '0 0 8px 0', color: '#333', fontSize: isMobile ? '16px' : '18px', fontWeight: '600' }}>
             {task.name}
           </h4>
           {task.description && (
-            <div style={{ marginBottom: '8px' }}>
+            <div style={{ marginBottom: '8px', fontSize: isMobile ? '13px' : '14px' }}>
               <span style={{ fontWeight: '500', color: '#666' }}>Description: </span>
               <span style={{ color: '#333' }}>{task.description}</span>
             </div>
           )}
           {task.group && (
-            <div style={{ marginBottom: '8px' }}>
+            <div style={{ marginBottom: '8px', fontSize: isMobile ? '13px' : '14px' }}>
               <span style={{ fontWeight: '500', color: '#666' }}>Group: </span>
               <span style={{ color: '#333' }}>{task.group}</span>
             </div>
           )}
           {task.created_at && (
-            <div style={{ fontSize: '14px', color: '#666' }}>
+            <div style={{ fontSize: isMobile ? '12px' : '14px', color: '#666' }}>
               Created: {new Date(task.created_at).toLocaleDateString()}
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '8px', marginLeft: '16px' }}>
+        <div style={{ 
+          display: 'flex', 
+          gap: isMobile ? '6px' : '8px', 
+          flexWrap: 'wrap',
+          marginTop: isMobile ? '8px' : '0'
+        }}>
           {/* Schedule button with indicator */}
           <button
             onClick={() => setShowScheduleFor(task.id)}
             style={{
-              padding: '6px 12px',
+              padding: isMobile ? '8px 12px' : '6px 12px',
               border: 'none',
               borderRadius: '4px',
               backgroundColor: task.schedules && task.schedules.length > 0 ? '#ffc107' : '#17a2b8',
               color: '#fff',
               cursor: 'pointer',
-              fontSize: '12px',
-              position: 'relative'
+              fontSize: isMobile ? '13px' : '12px',
+              position: 'relative',
+              flex: isMobile ? '1 1 calc(50% - 3px)' : '0 0 auto',
+              minWidth: isMobile ? '0' : 'auto'
             }}
           >
             Schedule
@@ -76,13 +98,14 @@ const CareTaskListView = ({
           <button
             onClick={() => handleEdit(task)}
             style={{
-              padding: '6px 12px',
+              padding: isMobile ? '8px 12px' : '6px 12px',
               border: 'none',
               borderRadius: '4px',
               backgroundColor: '#007bff',
               color: '#fff',
               cursor: 'pointer',
-              fontSize: '12px'
+              fontSize: isMobile ? '13px' : '12px',
+              flex: isMobile ? '1 1 calc(50% - 3px)' : '0 0 auto'
             }}
           >
             Edit
@@ -90,13 +113,14 @@ const CareTaskListView = ({
           <button
             onClick={() => toggleActive(task.id)}
             style={{
-              padding: '6px 12px',
+              padding: isMobile ? '8px 12px' : '6px 12px',
               border: 'none',
               borderRadius: '4px',
               backgroundColor: task.active ? '#6c757d' : '#28a745',
               color: '#fff',
               cursor: 'pointer',
-              fontSize: '12px'
+              fontSize: isMobile ? '13px' : '12px',
+              flex: isMobile ? '1 1 calc(50% - 3px)' : '0 0 auto'
             }}
           >
             {task.active ? 'Pause' : 'Resume'}
@@ -104,13 +128,14 @@ const CareTaskListView = ({
           <button
             onClick={() => handleDelete(task.id)}
             style={{
-              padding: '6px 12px',
+              padding: isMobile ? '8px 12px' : '6px 12px',
               border: 'none',
               borderRadius: '4px',
               backgroundColor: '#dc3545',
               color: '#fff',
               cursor: 'pointer',
-              fontSize: '12px'
+              fontSize: isMobile ? '13px' : '12px',
+              flex: isMobile ? '1 1 calc(50% - 3px)' : '0 0 auto'
             }}
           >
             Delete
