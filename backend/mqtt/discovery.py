@@ -86,9 +86,14 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True) -> bool:
         else:
             broadcast_topic = config.get('broadcast_topic')
             if broadcast_topic:
-                sensor_config = get_sensor_config(vital_name, broadcast_topic, base_topic)
-                if sensor_config:
-                    sensors[vital_name] = sensor_config
+                # Blood pressure gets three separate sensors
+                if vital_name == 'blood_pressure':
+                    bp_sensors = get_blood_pressure_sensors(broadcast_topic, base_topic)
+                    sensors.update(bp_sensors)
+                else:
+                    sensor_config = get_sensor_config(vital_name, broadcast_topic, base_topic)
+                    if sensor_config:
+                        sensors[vital_name] = sensor_config
 
     
     # Send discovery messages for all configured sensors
@@ -110,6 +115,50 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True) -> bool:
             
     logger.info(f"Sent {success_count}/{len(sensors)} MQTT Discovery messages")
     return success_count > 0
+
+def get_blood_pressure_sensors(broadcast_topic: str, base_topic: str) -> Dict[str, Dict[str, Any]]:
+    """
+    Get three separate sensor configurations for blood pressure (systolic, diastolic, MAP)
+    
+    Args:
+        broadcast_topic: MQTT topic where blood pressure data is published
+        base_topic: Base MQTT topic for the system
+        
+    Returns:
+        Dict containing three sensor configurations
+    """
+    return {
+        'blood_pressure_systolic': {
+            "uniq_id": f"{base_topic}_sensor.bp_systolic",
+            "name": "Blood Pressure Systolic",
+            "stat_t": broadcast_topic,
+            "val_tpl": "{{ value_json.systolic }}",
+            "json_attr_t": f"{broadcast_topic}/attributes",
+            "avty_t": f"{base_topic}/availability",
+            "unit_of_meas": "mmHg",
+            "stat_cla": "measurement",
+        },
+        'blood_pressure_diastolic': {
+            "uniq_id": f"{base_topic}_sensor.bp_diastolic",
+            "name": "Blood Pressure Diastolic",
+            "stat_t": broadcast_topic,
+            "val_tpl": "{{ value_json.diastolic }}",
+            "json_attr_t": f"{broadcast_topic}/attributes",
+            "avty_t": f"{base_topic}/availability",
+            "unit_of_meas": "mmHg",
+            "stat_cla": "measurement",
+        },
+        'blood_pressure_map': {
+            "uniq_id": f"{base_topic}_sensor.bp_map",
+            "name": "Blood Pressure MAP",
+            "stat_t": broadcast_topic,
+            "val_tpl": "{{ value_json.map }}",
+            "json_attr_t": f"{broadcast_topic}/attributes",
+            "avty_t": f"{base_topic}/availability",
+            "unit_of_meas": "mmHg",
+            "stat_cla": "measurement",
+        }
+    }
 
 def get_sensor_config(vital_name: str, broadcast_topic: str, base_topic: str) -> Optional[Dict[str, Any]]:
     """
@@ -153,15 +202,6 @@ def get_sensor_config(vital_name: str, broadcast_topic: str, base_topic: str) ->
             "avty_t": f"{base_topic}/availability",
             "unit_of_meas": "PA",
             "stat_cla": "measurement",
-        },
-        'blood_pressure': {
-            "uniq_id": f"{base_topic}_sensor.blood_pressure",
-            "name": "Blood Pressure",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.systolic }}/{{ value_json.diastolic }} ({{ value_json.map }})",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "mmHg",
         },
         'temperature': {
             "uniq_id": f"{base_topic}_sensor.temperature",
