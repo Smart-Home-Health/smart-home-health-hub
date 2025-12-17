@@ -10,6 +10,12 @@ from sqlalchemy.orm import Session
 from db import get_db
 from crud.settings import get_setting, save_setting
 from mqtt import send_mqtt_discovery
+from models.mqtt import (
+    MQTTSettings,
+    MQTTConnectionTest,
+    MQTTDiscoveryRequest,
+    MQTTSettingsResponse,
+)
 
 logger = logging.getLogger("app")
 
@@ -84,7 +90,7 @@ def get_default_mqtt_topics():
     }
 
 
-@router.get("/settings")
+@router.get("/settings", response_model=MQTTSettingsResponse)
 async def get_mqtt_settings(db: Session = Depends(get_db)):
     """Get current MQTT settings"""
     try:
@@ -121,11 +127,14 @@ async def get_mqtt_settings(db: Session = Depends(get_db)):
 
 
 @router.post("/settings")
-async def save_mqtt_settings(settings: dict, db: Session = Depends(get_db)):
+async def save_mqtt_settings(settings: MQTTSettings, db: Session = Depends(get_db)):
     """Save MQTT settings"""
     try:
+        # Convert to dict and filter out None values
+        settings_dict = {k: v for k, v in settings.model_dump().items() if v is not None}
+        
         # Save basic MQTT settings with proper data types
-        for key, value in settings.items():
+        for key, value in settings_dict.items():
             if key != 'topics':  # Handle topics separately
                 # Determine data type
                 if key in ['mqtt_enabled', 'mqtt_discovery_enabled', 'mqtt_test_mode']:
@@ -137,9 +146,9 @@ async def save_mqtt_settings(settings: dict, db: Session = Depends(get_db)):
                 save_setting(db, key, value, data_type)
         
         # Save topic configurations as JSON
-        if 'topics' in settings:
+        if 'topics' in settings_dict:
             import json
-            save_setting(db, 'mqtt_topics', json.dumps(settings['topics']), 'json')
+            save_setting(db, 'mqtt_topics', json.dumps(settings_dict['topics']), 'json')
         
         # Restart MQTT connection with new settings if MQTT is enabled
         restart_result = await restart_mqtt_if_enabled(db)
@@ -190,33 +199,18 @@ async def restart_mqtt_if_enabled(db: Session):
 
 
 @router.post("/test-connection")
-async def test_mqtt_connection(settings: dict):
+async def test_mqtt_connection(settings: MQTTConnectionTest):
     """Test MQTT connection with provided settings"""
     try:
         import paho.mqtt.client as mqtt
         
-        broker = settings.get('mqtt_broker', 'localhost')
-        port = settings.get('mqtt_port', 1883)
-        client_id = settings.get('mqtt_client_id', 'test_client')
-        username = settings.get('mqtt_username')
-        password = settings.get('mqtt_password')
+        broker = settings.mqtt_broker
+        port = settings.mqtt_port
+        client_id = settings.mqtt_client_id
+        username = settings.mqtt_username
+        password = settings.mqtt_password
         
         logger.info(f"Testing MQTT connection to {broker}:{port} with client_id={client_id}")
-        
-        # Validate required settings
-        if not broker:
-            return JSONResponse(
-                status_code=400,
-                content={"detail": "MQTT broker address is required"}
-            )
-        
-        try:
-            port = int(port)
-        except (ValueError, TypeError):
-            return JSONResponse(
-                status_code=400,
-                content={"detail": f"Invalid port number: {port}"}
-            )
         
         test_client = mqtt.Client(client_id=client_id)
         
@@ -281,10 +275,10 @@ async def test_mqtt_connection(settings: dict):
 
 
 @router.post("/send-discovery")
-async def send_mqtt_discovery_endpoint(request: dict):
+async def send_mqtt_discovery_endpoint(request: MQTTDiscoveryRequest):
     """Send MQTT discovery messages to Home Assistant"""
     try:
-        test_mode = request.get('test_mode', True)
+        test_mode = request.test_mode
         
         # Get the MQTT manager from modules
         from main import get_modules

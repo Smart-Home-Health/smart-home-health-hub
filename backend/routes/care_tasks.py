@@ -5,7 +5,23 @@ import logging
 from fastapi import APIRouter, Depends, Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from typing import List, Optional
 from db import get_db
+from models.care_tasks import (
+    CareTaskCreate,
+    CareTaskUpdate,
+    CareTaskResponse,
+    CareTaskComplete,
+    CareTaskScheduleCreate,
+    CareTaskScheduleUpdate,
+    CareTaskScheduleResponse,
+    CareTaskScheduleComplete,
+    CareTaskCategoryCreate,
+    CareTaskCategoryUpdate,
+    CareTaskCategoryResponse,
+    CronValidation,
+    CareTaskLogResponse,
+)
 from crud.care_tasks import (
     add_care_task, get_care_tasks, get_care_task, update_care_task, 
     delete_care_task, toggle_care_task_active, log_care_task,
@@ -28,19 +44,21 @@ router = APIRouter(prefix="/api", tags=["care_tasks"])
 
 # Care Task CRUD endpoints
 @router.post("/add/care-task")
-async def api_add_care_task(data: dict = Body(...), db: Session = Depends(get_db)):
+async def api_add_care_task(data: CareTaskCreate, db: Session = Depends(get_db)):
     """Add a new care task"""
     try:
-        # Get current patient to assign the task to them
-        current_patient = get_current_patient(db)
-        patient_id = current_patient.id if current_patient else None
+        # Get current patient if not provided
+        patient_id = data.patient_id
+        if patient_id is None:
+            current_patient = get_current_patient(db)
+            patient_id = current_patient.id if current_patient else None
         
         task_id = add_care_task(
             db=db,
-            name=data["name"],
-            category_id=data["category_id"],
-            description=data.get("description"),
-            active=data.get("active", True),
+            name=data.name,
+            category_id=data.category_id,
+            description=data.description,
+            active=data.active,
             patient_id=patient_id
         )
         if task_id:
@@ -88,10 +106,12 @@ async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session =
 
 
 @router.put("/care-tasks/{task_id}")
-async def update_care_task_endpoint(task_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def update_care_task_endpoint(task_id: int, data: CareTaskUpdate, db: Session = Depends(get_db)):
     """Update an existing care task"""
     try:
-        success = update_care_task(db, task_id, **data)
+        # Filter out None values
+        update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+        success = update_care_task(db, task_id, **update_data)
         if success:
             return {"status": "success"}
         else:
@@ -140,15 +160,15 @@ async def toggle_care_task_active_endpoint(task_id: int, db: Session = Depends(g
 
 
 @router.post("/care-tasks/{task_id}/complete")
-async def complete_care_task_endpoint(task_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def complete_care_task_endpoint(task_id: int, data: CareTaskComplete, db: Session = Depends(get_db)):
     """Complete a care task"""
     try:
         log_id = log_care_task(
             db=db,
             task_id=task_id,
-            completion_status=data.get("status", "completed"),
-            notes=data.get("notes"),
-            completed_by=data.get("completed_by")
+            completion_status=data.status,
+            notes=data.notes,
+            completed_by=data.completed_by
         )
         if log_id:
             return {"id": log_id, "status": "success"}
@@ -166,22 +186,18 @@ async def complete_care_task_endpoint(task_id: int, data: dict = Body(...), db: 
 @router.post("/add/care-task-schedule/{care_task_id}")
 async def api_add_care_task_schedule(
     care_task_id: int, 
-    data: dict = Body(...), 
+    data: CareTaskScheduleCreate, 
     db: Session = Depends(get_db)
 ):
     """Add a schedule to a care task"""
     try:
         # Validate cron expression first
-        cron_expression = data.get("cron_expression")
-        if not cron_expression:
-            return JSONResponse(status_code=400, content={"detail": "cron_expression is required"})
-        
-        is_valid, error_msg = validate_cron_expression(cron_expression)
+        is_valid, error_msg = validate_cron_expression(data.cron_expression)
         if not is_valid:
             return JSONResponse(status_code=400, content={"detail": f"Invalid cron expression: {error_msg}"})
         
         # If patient_id not provided, get current patient
-        patient_id = data.get("patient_id")
+        patient_id = data.patient_id
         if patient_id is None:
             current_patient = get_current_patient(db)
             patient_id = current_patient.id if current_patient else None
@@ -189,10 +205,10 @@ async def api_add_care_task_schedule(
         schedule_id = add_care_task_schedule(
             db=db,
             care_task_id=care_task_id,
-            cron_expression=cron_expression,
-            description=data.get("description"),
-            active=data.get("active", True),
-            notes=data.get("notes"),
+            cron_expression=data.cron_expression,
+            description=data.description,
+            active=data.active,
+            notes=data.notes,
             patient_id=patient_id
         )
         if schedule_id:
@@ -271,16 +287,19 @@ async def get_care_task_schedule_endpoint(schedule_id: int, db: Session = Depend
 
 
 @router.put("/care-task-schedules/{schedule_id}")
-async def update_care_task_schedule_endpoint(schedule_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def update_care_task_schedule_endpoint(schedule_id: int, data: CareTaskScheduleUpdate, db: Session = Depends(get_db)):
     """Update an existing care task schedule"""
     try:
+        # Filter out None values
+        update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+        
         # Validate cron expression if provided
-        if "cron_expression" in data:
-            is_valid, error_msg = validate_cron_expression(data["cron_expression"])
+        if "cron_expression" in update_data:
+            is_valid, error_msg = validate_cron_expression(update_data["cron_expression"])
             if not is_valid:
                 return JSONResponse(status_code=400, content={"detail": f"Invalid cron expression: {error_msg}"})
         
-        success = update_care_task_schedule(db, schedule_id, **data)
+        success = update_care_task_schedule(db, schedule_id, **update_data)
         if success:
             return {"status": "success"}
         else:
@@ -328,7 +347,7 @@ async def toggle_care_task_schedule_active_endpoint(schedule_id: int, db: Sessio
 
 
 @router.post("/care-task-schedule/{schedule_id}/complete")
-async def complete_care_task_schedule_endpoint(schedule_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def complete_care_task_schedule_endpoint(schedule_id: int, data: CareTaskScheduleComplete, db: Session = Depends(get_db)):
     """Complete a scheduled care task"""
     try:
         # Get the schedule to find the care task ID
@@ -344,10 +363,10 @@ async def complete_care_task_schedule_endpoint(schedule_id: int, data: dict = Bo
             db=db,
             task_id=schedule['care_task_id'],
             schedule_id=schedule_id,
-            scheduled_time=data.get("scheduled_time"),
-            notes=data.get("notes"),
+            scheduled_time=data.scheduled_time,
+            notes=data.notes,
             status="completed",
-            completed_by=data.get("completed_by")
+            completed_by=data.completed_by
         )
         
         if log_id:
@@ -394,7 +413,7 @@ async def complete_care_task_schedule_endpoint(schedule_id: int, data: dict = Bo
 
 
 @router.post("/care-task-schedule/{schedule_id}/skip")
-async def skip_care_task_schedule_endpoint(schedule_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def skip_care_task_schedule_endpoint(schedule_id: int, data: CareTaskScheduleComplete, db: Session = Depends(get_db)):
     """Skip a scheduled care task"""
     try:
         # Get the schedule to find the care task ID
@@ -406,10 +425,10 @@ async def skip_care_task_schedule_endpoint(schedule_id: int, data: dict = Body(.
             db=db,
             task_id=schedule['care_task_id'],
             schedule_id=schedule_id,
-            scheduled_time=data.get("scheduled_time"),
-            notes=data.get("notes", "Task skipped"),
+            scheduled_time=data.scheduled_time,
+            notes=data.notes or "Task skipped",
             status="skipped",
-            completed_by=data.get("completed_by")
+            completed_by=data.completed_by
         )
         if log_id:
             return {"id": log_id, "status": "success"}
@@ -460,14 +479,14 @@ async def get_admin_inactive_care_tasks_endpoint(patient_id: int = None, db: Ses
 
 # Care Task Category endpoints
 @router.post("/add/care-task-category")
-async def api_add_care_task_category(data: dict = Body(...), db: Session = Depends(get_db)):
+async def api_add_care_task_category(data: CareTaskCategoryCreate, db: Session = Depends(get_db)):
     """Add a new care task category"""
     try:
         category_id = add_care_task_category(
             db=db,
-            name=data.get("name"),
-            description=data.get("description"),
-            color=data.get("color", "#3B82F6")
+            name=data.name,
+            description=data.description,
+            color=data.color
         )
         if category_id:
             return {"id": category_id, "status": "success"}
@@ -496,10 +515,12 @@ async def get_care_task_categories_endpoint(db: Session = Depends(get_db)):
 
 
 @router.put("/care-task-categories/{category_id}")
-async def update_care_task_category_endpoint(category_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def update_care_task_category_endpoint(category_id: int, data: CareTaskCategoryUpdate, db: Session = Depends(get_db)):
     """Update an existing care task category"""
     try:
-        success = update_care_task_category(db, category_id, **data)
+        # Filter out None values
+        update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+        success = update_care_task_category(db, category_id, **update_data)
         if success:
             return {"status": "success"}
         else:
@@ -611,14 +632,10 @@ async def get_overdue_tasks_endpoint(db: Session = Depends(get_db)):
 
 # Additional scheduling utility endpoints
 @router.post("/care-task-schedules/validate-cron")
-async def validate_cron_expression_endpoint(data: dict = Body(...)):
+async def validate_cron_expression_endpoint(data: CronValidation):
     """Validate a cron expression"""
     try:
-        cron_expression = data.get("cron_expression")
-        if not cron_expression:
-            return JSONResponse(status_code=400, content={"detail": "cron_expression is required"})
-        
-        is_valid, error_msg = validate_cron_expression(cron_expression)
+        is_valid, error_msg = validate_cron_expression(data.cron_expression)
         
         if is_valid:
             return {

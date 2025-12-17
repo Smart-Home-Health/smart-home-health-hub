@@ -5,8 +5,16 @@ import logging
 from fastapi import APIRouter, Depends, Body, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime
 from db import get_db
+from models.monitoring import (
+    AlertAcknowledge,
+    MonitoringAlertResponse,
+    PulseOxReading,
+    PulseOxDataResponse,
+    MonitoringDataQuery,
+)
 from crud.monitoring import (get_monitoring_alerts, get_unacknowledged_alerts_count, update_monitoring_alert, 
                              acknowledge_alert, get_pulse_ox_data_for_alert, get_available_pulse_ox_dates,
                              get_pulse_ox_data_by_date)
@@ -35,17 +43,17 @@ async def get_unacknowledged_alerts_count_endpoint(db: Session = Depends(get_db)
 
 
 @router.post("/alerts/{alert_id}/acknowledge")
-async def acknowledge_alert_endpoint(alert_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def acknowledge_alert_endpoint(alert_id: int, data: AlertAcknowledge, db: Session = Depends(get_db)):
     """
     Acknowledge an alert and save oxygen usage data
     """
     try:
-        logger.info(f"Acknowledging alert {alert_id} with data: {data}")
+        logger.info(f"Acknowledging alert {alert_id} with data: {data.model_dump()}")
 
         # Extract oxygen data from the request
-        oxygen_amount = data.get('oxygen_used', 0)
-        oxygen_highest = data.get('oxygen_highest')
-        oxygen_unit = data.get('oxygen_unit')
+        oxygen_amount = data.oxygen_used or 0
+        oxygen_highest = data.oxygen_highest
+        oxygen_unit = data.oxygen_unit
 
         logger.info(f"Processed data: amount={oxygen_amount}, highest={oxygen_highest}, unit={oxygen_unit}")
 
@@ -122,7 +130,6 @@ async def analyze_pulse_ox_history(date: str, db: Session = Depends(get_db)):
     """Analyze pulse ox data for a specific date"""
     try:
         # Validate date format
-        from datetime import datetime
         try:
             datetime.strptime(date, '%Y-%m-%d')
         except ValueError:
@@ -136,12 +143,11 @@ async def analyze_pulse_ox_history(date: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error analyzing pulse ox data: {str(e)}")
 
 
-@router.get("/history/raw/{date}")
+@router.get("/history/raw/{date}", response_model=PulseOxDataResponse)
 async def get_raw_pulse_ox_data(date: str, db: Session = Depends(get_db)):
     """Get raw pulse ox data for a specific date"""
     try:
         # Validate date format
-        from datetime import datetime
         try:
             datetime.strptime(date, '%Y-%m-%d')
         except ValueError:
@@ -149,22 +155,23 @@ async def get_raw_pulse_ox_data(date: str, db: Session = Depends(get_db)):
         
         data = get_pulse_ox_data_by_date(db, date)
         
-        # Convert to dictionaries for JSON response
-        result = []
-        for reading in data:
-            result.append({
-                'id': reading.id,
-                'timestamp': reading.timestamp,
-                'spo2': reading.spo2,
-                'bpm': reading.bpm,
-                'perfusion': reading.pa  # Use pa field as perfusion
-            })
+        # Convert to Pydantic models
+        readings = [
+            PulseOxReading(
+                id=reading.id,
+                timestamp=reading.timestamp,
+                spo2=reading.spo2,
+                bpm=reading.bpm,
+                perfusion=reading.pa  # Use pa field as perfusion
+            )
+            for reading in data
+        ]
         
-        return {
-            'date': date,
-            'readings': result,
-            'count': len(result)
-        }
+        return PulseOxDataResponse(
+            date=date,
+            readings=readings,
+            count=len(readings)
+        )
     except HTTPException:
         raise
     except Exception as e:

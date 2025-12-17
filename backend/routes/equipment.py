@@ -6,8 +6,20 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from typing import List
 
 from db import get_db
+from models.equipment import (
+    EquipmentCreate,
+    EquipmentUpdate,
+    EquipmentResponse,
+    EquipmentChangeLog,
+    EquipmentQuantityChange,
+    EquipmentChangeHistoryResponse,
+    EquipmentCategoryCreate,
+    EquipmentCategoryUpdate,
+    EquipmentCategoryResponse,
+)
 from crud.equipment import (
     get_equipment_list, log_equipment_change, receive_equipment, 
     open_equipment, get_equipment_change_history, get_equipment,
@@ -22,36 +34,24 @@ router = APIRouter(prefix="/api/equipment", tags=["equipment"])
 
 
 @router.post("")
-async def api_add_equipment(data: dict = Body(...), db: Session = Depends(get_db)):
+async def api_add_equipment(data: EquipmentCreate, db: Session = Depends(get_db)):
     """Add new equipment item."""
-    name = data.get('name')
-    quantity = data.get('quantity', 1)
-    scheduled_replacement = data.get('scheduled_replacement', True)
-    last_changed = data.get('last_changed')
-    useful_days = data.get('useful_days')
-    
-    if not name:
-        return JSONResponse(status_code=400, content={"detail": "Name is required"})
-    
-    if scheduled_replacement and (not last_changed or not useful_days):
+    if data.scheduled_replacement and (not data.last_changed or not data.useful_days):
         return JSONResponse(status_code=400, content={"detail": "Last changed and useful days are required for scheduled replacements"})
     
-    eid = add_equipment_simple(db, name, quantity, scheduled_replacement, last_changed, useful_days)
+    eid = add_equipment_simple(db, data.name, data.quantity, data.scheduled_replacement, data.last_changed, data.useful_days)
     return {"id": eid, "status": "success"}
 
 
-@router.get("")
+@router.get("", response_model=List[dict])
 async def api_get_equipment(db: Session = Depends(get_db)):
     """Get equipment list sorted by due next."""
     return get_equipment_list(db)
 
 
 @router.post("/{equipment_id}/change")
-async def api_log_equipment_change(equipment_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def api_log_equipment_change(equipment_id: int, data: EquipmentChangeLog, db: Session = Depends(get_db)):
     """Log a change and update last_changed."""
-    changed_at = data.get('changed_at')
-    if not changed_at:
-        return JSONResponse(status_code=400, content={"detail": "Missing changed_at"})
     
     # Check if equipment has scheduled replacement
     from models import Equipment
@@ -62,7 +62,7 @@ async def api_log_equipment_change(equipment_id: int, data: dict = Body(...), db
     if not equipment.scheduled_replacement:
         return JSONResponse(status_code=400, content={"detail": "Equipment does not have scheduled replacement"})
     
-    success = log_equipment_change(db, equipment_id, changed_at)
+    success = log_equipment_change(db, equipment_id, data.changed_at)
     return {"success": success}
 
 
@@ -73,18 +73,16 @@ async def api_get_equipment_history(equipment_id: int, db: Session = Depends(get
 
 
 @router.post("/{equipment_id}/receive")
-async def api_receive_equipment(equipment_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def api_receive_equipment(equipment_id: int, data: EquipmentQuantityChange, db: Session = Depends(get_db)):
     """Increase equipment quantity (receive new stock)."""
-    amount = data.get('amount', 1)
-    success = receive_equipment(db, equipment_id, amount)
+    success = receive_equipment(db, equipment_id, data.amount)
     return {"success": success}
 
 
 @router.post("/{equipment_id}/open")
-async def api_open_equipment(equipment_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def api_open_equipment(equipment_id: int, data: EquipmentQuantityChange, db: Session = Depends(get_db)):
     """Decrease equipment quantity (open/use equipment)."""
-    amount = data.get('amount', 1)
-    success = open_equipment(db, equipment_id, amount)
+    success = open_equipment(db, equipment_id, data.amount)
     return {"success": success}
 
 
