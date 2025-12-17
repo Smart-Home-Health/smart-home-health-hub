@@ -5,10 +5,16 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from db import get_db
 from crud.settings import get_all_settings, get_setting, save_setting, delete_setting
+from models.settings import (
+    SettingIn,
+    SettingUpdate,
+    SettingResponse,
+    SettingDeleteResponse,
+    SettingCreateResponse,
+)
 
 logger = logging.getLogger("app")
 
@@ -29,33 +35,22 @@ def publish_event(event_type: str, data: dict):
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
-# Pydantic models for request validation
-class SettingIn(BaseModel):
-    value: Any
-    data_type: str = "string"
-    description: Optional[str] = None
-
-
-class SettingUpdate(BaseModel):
-    settings: Dict[str, Any]
-
-
 @router.get("")
 async def get_all_settings_endpoint(db: Session = Depends(get_db)):
     """Get all settings"""
     return get_all_settings(db)
 
 
-@router.get("/{key}")
+@router.get("/{key}", response_model=SettingResponse)
 async def get_setting_api(key: str, default: Optional[str] = None, db: Session = Depends(get_db)):
     """Get a specific setting by key"""
     value = get_setting(db, key, default)
     if value is None and default is None:
         raise HTTPException(status_code=404, detail=f"Setting {key} not found")
-    return {"key": key, "value": value}
+    return SettingResponse(key=key, value=value)
 
 
-@router.post("/{key}")
+@router.post("/{key}", response_model=SettingCreateResponse)
 async def set_setting(key: str, setting: SettingIn, db: Session = Depends(get_db)):
     """Set a specific setting"""
     success = save_setting(
@@ -71,7 +66,7 @@ async def set_setting(key: str, setting: SettingIn, db: Session = Depends(get_db
     # Publish settings change event to trigger WebSocket broadcast
     publish_event("settings_changed", {"key": key, "value": setting.value})
     
-    return {"key": key, "value": setting.value, "status": "success"}
+    return SettingCreateResponse(key=key, value=setting.value, status="success")
 
 
 @router.post("")
@@ -138,7 +133,7 @@ async def update_multiple_settings(settings: SettingUpdate, db: Session = Depend
     return results
 
 
-@router.delete("/{key}")
+@router.delete("/{key}", response_model=SettingDeleteResponse)
 async def delete_setting_endpoint(key: str, db: Session = Depends(get_db)):
     """Delete a setting"""
     success = delete_setting(db, key)
@@ -148,4 +143,4 @@ async def delete_setting_endpoint(key: str, db: Session = Depends(get_db)):
     # Publish settings change event to trigger WebSocket broadcast
     publish_event("settings_changed", {"deleted_key": key})
     
-    return {"status": "success", "message": f"Setting {key} deleted"}
+    return SettingDeleteResponse(status="success", message=f"Setting {key} deleted")

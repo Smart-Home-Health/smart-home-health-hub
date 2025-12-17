@@ -1,14 +1,8 @@
-from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, Boolean, DateTime
-from sqlalchemy import TIMESTAMP
-from sqlalchemy.orm import declarative_base, relationship
+"""
+Pydantic models for API request/response validation
+"""
 
-# Import Base from schemas for new schema models
-from schemas import Base as SchemaBase
-
-# Maintain backward compatibility with existing code
-Base = declarative_base()
-
-# Import models from schemas (migrated)
+# Re-export SQLAlchemy models from schemas for backward compatibility
 from schemas.business import Business
 from schemas.provider import Provider
 from schemas.nutrition_intake import NutritionIntake
@@ -30,3 +24,11 @@ from schemas.blood_pressure import BloodPressure
 from schemas.temperature import Temperature
 from schemas.vital import Vital
 from schemas.patient import Patient
+
+__all__ = [
+    'Business', 'Provider', 'NutritionIntake', 'CareTaskCategory', 'CareTask',
+    'CareTaskSchedule', 'CareTaskLog', 'Medication', 'MedicationSchedule',
+    'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
+    'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
+    'BloodPressure', 'Temperature', 'Vital', 'Patient'
+]

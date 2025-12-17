@@ -6,8 +6,19 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 from db import get_db
+from models.medications import (
+    MedicationCreate,
+    MedicationUpdate,
+    MedicationResponse,
+    MedicationScheduleCreate,
+    MedicationScheduleUpdate,
+    MedicationScheduleResponse,
+    MedicationAdminister,
+    ProviderInfo,
+    PharmacyInfo,
+)
 from crud.medications import (add_medication, get_active_medications, get_inactive_medications, update_medication, 
                   delete_medication, add_medication_schedule, get_medication_schedules, 
                   get_all_medication_schedules, update_medication_schedule, delete_medication_schedule, 
@@ -23,27 +34,14 @@ router = APIRouter(prefix="/api", tags=["medications"])
 
 # Medication CRUD endpoints
 @router.post("/add/medication")
-async def api_add_medication(data: dict = Body(...), db: Session = Depends(get_db)):
+async def api_add_medication(data: MedicationCreate, db: Session = Depends(get_db)):
     """Add a new medication entry."""
-    required_fields = ["name", "concentration", "quantity", "quantity_unit", "instructions", "start_date", "as_needed", "notes"]
-    missing = [f for f in required_fields if f not in data]
-    if missing:
-        return JSONResponse(status_code=400, content={"detail": f"Missing fields: {', '.join(missing)}"})
 
-    # Extract fields
-    name = data["name"]
-    concentration = data["concentration"]
-    quantity = data["quantity"]
-    quantity_unit = data["quantity_unit"]
-    instructions = data["instructions"]
-    start_date = data["start_date"]
-    as_needed = data["as_needed"]
-    notes = data["notes"]
-    end_date = data.get("end_date")  # Optional, not required in add form
-    is_patient_specific = data.get("is_patient_specific", False)  # New field
-    admin_patient_id = data.get("admin_patient_id")  # Admin can specify patient directly
-    prescriber_id = data.get("prescriber_id")  # Optional provider ID
-    pharmacy_id = data.get("pharmacy_id")  # Optional business ID
+    # Extract fields from Pydantic model
+    is_patient_specific = data.is_patient_specific
+    admin_patient_id = data.admin_patient_id
+    prescriber_id = data.prescriber_id
+    pharmacy_id = data.pharmacy_id
     
     # Determine patient_id
     patient_id = None
@@ -65,15 +63,15 @@ async def api_add_medication(data: dict = Body(...), db: Session = Depends(get_d
     try:
         med_id = add_medication(
             db,
-            name=name,
-            concentration=concentration,
-            quantity=quantity,
-            quantity_unit=quantity_unit,
-            instructions=instructions,
-            start_date=start_date,
-            end_date=end_date,
-            as_needed=as_needed,
-            notes=notes,
+            name=data.name,
+            concentration=data.concentration,
+            quantity=data.quantity,
+            quantity_unit=data.quantity_unit,
+            instructions=data.instructions,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            as_needed=data.as_needed,
+            notes=data.notes,
             patient_id=patient_id,
             prescriber_id=prescriber_id,
             pharmacy_id=pharmacy_id
@@ -83,13 +81,13 @@ async def api_add_medication(data: dict = Body(...), db: Session = Depends(get_d
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
-@router.get("/medications/active")
+@router.get("/medications/active", response_model=List[dict])
 async def get_active_medications_endpoint(db: Session = Depends(get_db)):
     """Get all active medications."""
     return get_active_medications(db)
 
 
-@router.get("/medications/inactive")
+@router.get("/medications/inactive", response_model=List[dict])
 async def get_inactive_medications_endpoint(db: Session = Depends(get_db)):
     """Get all inactive medications."""
     return get_inactive_medications(db)
@@ -185,12 +183,12 @@ async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = No
 
 
 @router.put("/medications/{med_id}")
-async def update_medication_endpoint(med_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def update_medication_endpoint(med_id: int, data: MedicationUpdate, db: Session = Depends(get_db)):
     """Update an existing medication."""
-    # Remove id from data if present
-    data.pop('id', None)
+    # Filter out None values
+    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     
-    success = update_medication(db, med_id, **data)
+    success = update_medication(db, med_id, **update_data)
     if not success:
         return JSONResponse(status_code=404, content={"detail": "Medication not found"})
     
@@ -224,13 +222,9 @@ async def toggle_medication_active_endpoint(med_id: int, db: Session = Depends(g
 
 
 @router.post("/medications/{med_id}/administer")
-async def administer_medication_endpoint(med_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
+async def administer_medication_endpoint(med_id: int, data: MedicationAdminister, db: Session = Depends(get_db)):
     """Record a medication administration and deduct from quantity."""
-    dose_amount = data.get('dose_amount')
-    schedule_id = data.get('schedule_id')
-    scheduled_time = data.get('scheduled_time')
-    notes = data.get('notes')
-    result = administer_medication(db, med_id, dose_amount, schedule_id, scheduled_time, notes)
+    result = administer_medication(db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes)
     if not result:
         return JSONResponse(status_code=400, content={"detail": "Failed to administer medication"})
     return {"success": True}
@@ -240,20 +234,11 @@ async def administer_medication_endpoint(med_id: int, data: dict = Body(...), db
 @router.post("/add/schedule/{medication_id}")
 async def api_add_medication_schedule(
     medication_id: int, 
-    data: dict = Body(...), 
+    data: MedicationScheduleCreate, 
     db: Session = Depends(get_db)
 ):
     """Add a new medication schedule entry."""
     try:
-        schedule_type = data.get('type', 'med')
-        if schedule_type != 'med':
-            return JSONResponse(status_code=400, content={"detail": "Invalid schedule type for medication"})
-        
-        # Validate required fields
-        required_fields = ['cron_expression', 'description', 'dose_amount']
-        for field in required_fields:
-            if field not in data or not data[field]:
-                return JSONResponse(status_code=400, content={"detail": f"Missing required field: {field}"})
         
         # Verify medication exists
         medication = db.query(Medication).filter(Medication.id == medication_id).first()
@@ -263,10 +248,8 @@ async def api_add_medication_schedule(
         # For global medications, use provided patient_id; otherwise inherit from medication
         patient_id = None
         if medication.patient_id is None:  # Global medication
-            patient_id = data.get('patient_id')
-            if patient_id:
-                patient_id = int(patient_id)
-            else:
+            patient_id = data.patient_id
+            if not patient_id:
                 # Fallback to current patient if no patient_id provided for global medication
                 current_patient_id = get_setting(db, 'current_patient_id')
                 if current_patient_id:
@@ -278,11 +261,11 @@ async def api_add_medication_schedule(
         schedule_id = add_medication_schedule(
             db,
             medication_id=medication_id,
-            cron_expression=data['cron_expression'],
-            description=data['description'],
-            dose_amount=data['dose_amount'],
-            active=data.get('active', True),
-            notes=data.get('notes', ''),
+            cron_expression=data.cron_expression,
+            description=data.description,
+            dose_amount=data.dose_amount,
+            active=data.active,
+            notes=data.notes or '',
             patient_id=patient_id
         )
         
@@ -317,14 +300,14 @@ async def get_all_medication_schedules_endpoint(active_only: bool = True, db: Se
 @router.put("/schedules/{schedule_id}")
 async def update_medication_schedule_endpoint(
     schedule_id: int, 
-    data: dict = Body(...), 
+    data: MedicationScheduleUpdate, 
     db: Session = Depends(get_db)
 ):
     """Update an existing medication schedule."""
-    # Remove id from data if present
-    data.pop('id', None)
+    # Filter out None values
+    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     
-    success = update_medication_schedule(db, schedule_id, **data)
+    success = update_medication_schedule(db, schedule_id, **update_data)
     if not success:
         return JSONResponse(status_code=404, content={"detail": "Medication schedule not found"})
     
@@ -437,12 +420,12 @@ async def get_providers_for_medication(patient_id: Optional[int] = None, db: Ses
         
         return {
             "providers": [
-                {
-                    "id": p.id,
-                    "name": f"{p.first_name} {p.last_name}".strip(),
-                    "specialty": p.specialty,
-                    "type": p.provider_type
-                }
+                ProviderInfo(
+                    id=p.id,
+                    name=f"{p.first_name} {p.last_name}".strip(),
+                    specialty=p.specialty,
+                    type=p.provider_type
+                ).model_dump()
                 for p in providers
             ]
         }
@@ -466,12 +449,12 @@ async def get_pharmacies_for_medication(db: Session = Depends(get_db)):
         
         return {
             "pharmacies": [
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "phone": p.phone,
-                    "address": f"{p.address_line1 or ''} {p.address_line2 or ''}".strip() or None
-                }
+                PharmacyInfo(
+                    id=p.id,
+                    name=p.name,
+                    phone=p.phone,
+                    address=f"{p.address_line1 or ''} {p.address_line2 or ''}".strip() or None
+                ).model_dump()
                 for p in pharmacies
             ]
         }
