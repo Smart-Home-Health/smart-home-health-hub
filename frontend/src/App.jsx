@@ -11,28 +11,37 @@ import AdminMonitoring from './pages/admin/AdminMonitoring';
 import AdminSettings from './pages/admin/AdminSettings';
 import AdminBusinesses from './pages/admin/AdminBusinesses';
 import AdminProviders from './pages/admin/AdminProviders';
+import AdminDashboardV2 from './pages/adminv2/AdminDashboard';
 import "./App.css";
 
 export default function App() {
   return (
     <Router>
-      <Layout>
-        <Routes>
-          {/* Main Dashboard Route */}
-          <Route path="/" element={<Dashboard />} />
-          
-          {/* Admin Routes */}
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/schedule" element={<AdminSchedule />} />
-          <Route path="/admin/medications" element={<AdminMedications />} />
-          <Route path="/admin/care-tasks" element={<AdminCareTasks />} />
-          <Route path="/admin/equipment" element={<AdminEquipment />} />
-          <Route path="/admin/monitoring" element={<AdminMonitoring />} />
-          <Route path="/admin/settings" element={<AdminSettings />} />
-          <Route path="/admin/businesses" element={<AdminBusinesses />} />
-          <Route path="/admin/providers" element={<AdminProviders />} />
-        </Routes>
-      </Layout>
+      <Routes>
+        {/* Admin V2 Routes - No Layout wrapper */}
+        <Route path="/adminv2" element={<AdminDashboardV2 />} />
+        
+        {/* Routes with Layout wrapper */}
+        <Route path="*" element={
+          <Layout>
+            <Routes>
+              {/* Main Dashboard Route */}
+              <Route path="/" element={<Dashboard />} />
+              
+              {/* Admin Routes */}
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/schedule" element={<AdminSchedule />} />
+              <Route path="/admin/medications" element={<AdminMedications />} />
+              <Route path="/admin/care-tasks" element={<AdminCareTasks />} />
+              <Route path="/admin/equipment" element={<AdminEquipment />} />
+              <Route path="/admin/monitoring" element={<AdminMonitoring />} />
+              <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route path="/admin/businesses" element={<AdminBusinesses />} />
+              <Route path="/admin/providers" element={<AdminProviders />} />
+            </Routes>
+          </Layout>
+        } />
+      </Routes>
     </Router>
   );
 }

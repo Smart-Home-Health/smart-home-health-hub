@@ -1,0 +1,424 @@
+/* AdminV2 Layout */
+.adminv2-container {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #f5f5f5;
+}
+
+/* Side Navigation */
+.adminv2-sidenav {
+  width: 250px;
+  background-color: #2c3e50;
+  color: #ecf0f1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidenav-header {
+  padding: 1.5rem 1rem;
+  border-bottom: 1px solid #34495e;
+}
+
+.sidenav-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logo-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.logo-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #ecf0f1;
+  line-height: 1.2;
+}
+
+.logo-subtitle {
+  font-size: 0.75rem;
+  color: #95a5a6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.sidenav-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #ecf0f1;
+}
+
+.sidenav-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+}
+
+.sidenav-item {
+  margin: 0;
+}
+
+.sidenav-item a {
+  display: flex;
+  align-items: center;
+  padding: 0.875rem 1rem;
+  color: #bdc3c7;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.sidenav-item a:hover {
+  background-color: #34495e;
+  color: #ecf0f1;
+}
+
+.sidenav-item.active a {
+  background-color: #3498db;
+  color: #fff;
+}
+
+.sidenav-icon {
+  font-size: 1.25rem;
+  margin-right: 0.75rem;
+  width: 24px;
+  text-align: center;
+}
+
+.sidenav-label {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.sidenav-footer {
+  padding: 1rem;
+  border-top: 1px solid #34495e;
+}
+
+.btn-back-to-v1 {
+  display: block;
+  padding: 0.5rem 1rem;
+  background-color: #34495e;
+  color: #ecf0f1;
+  text-decoration: none;
+  border-radius: 4px;
+  text-align: center;
+  transition: background-color 0.2s ease;
+}
+
+.btn-back-to-v1:hover {
+  background-color: #3498db;
+}
+
+/* Main Content Area */
+.adminv2-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.adminv2-header {
+  background-color: #fff;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.adminv2-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  color: #2c3e50;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.btn-primary, .btn-secondary {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background-color: #3498db;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background-color: #2980b9;
+}
+
+.btn-secondary {
+  background-color: #ecf0f1;
+  color: #2c3e50;
+}
+
+.btn-secondary:hover {
+  background-color: #bdc3c7;
+}
+
+/* Tab Navigation */
+.tab-navigation {
+  background-color: #fff;
+  border-bottom: 2px solid #ddd;
+  display: flex;
+  padding: 0 2rem;
+}
+
+.tab-button {
+  background: none;
+  border: none;
+  padding: 1rem 1.5rem;
+  font-size: 0.95rem;
+  color: #7f8c8d;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.tab-button:hover {
+  color: #2c3e50;
+  background-color: #f8f9fa;
+}
+
+.tab-button.active {
+  color: #3498db;
+  border-bottom-color: #3498db;
+}
+
+/* Tab Content */
+.tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem;
+}
+
+/* Summary Cards */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.summary-card {
+  background-color: #fff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.summary-label {
+  font-size: 0.875rem;
+  color: #7f8c8d;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.summary-value {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #2c3e50;
+  margin-bottom: 0.25rem;
+}
+
+.summary-subtext {
+  font-size: 0.875rem;
+  color: #95a5a6;
+}
+
+/* Patient Table */
+.patient-table-container {
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.patient-table-container h3 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.25rem;
+  color: #2c3e50;
+}
+
+.patient-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.patient-table thead {
+  background-color: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.patient-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #495057;
+  text-transform: uppercase;
+}
+
+.patient-table tbody tr {
+  border-bottom: 1px solid #dee2e6;
+  transition: background-color 0.2s ease;
+}
+
+.patient-table tbody tr:hover {
+  background-color: #f8f9fa;
+}
+
+.patient-table td {
+  padding: 1rem;
+  font-size: 0.9rem;
+  color: #495057;
+}
+
+.patient-link {
+  color: #3498db;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.patient-link:hover {
+  color: #2980b9;
+  text-decoration: underline;
+}
+
+/* Status Cells */
+.status-cell {
+  padding: 0.5rem;
+  border-radius: 4px;
+}
+
+.status-cell.status-good {
+  background-color: #d4edda;
+  border-left: 3px solid #28a745;
+}
+
+.status-cell.status-info {
+  background-color: #d1ecf1;
+  border-left: 3px solid #17a2b8;
+}
+
+.status-cell.status-warning {
+  background-color: #fff3cd;
+  border-left: 3px solid #ffc107;
+}
+
+.status-cell.status-critical {
+  background-color: #f8d7da;
+  border-left: 3px solid #dc3545;
+}
+
+.status-main {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.status-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status-badge.pending {
+  background-color: #17a2b8;
+  color: #fff;
+}
+
+.status-badge.missed {
+  background-color: #dc3545;
+  color: #fff;
+}
+
+.status-badge.due-soon {
+  background-color: #ffc107;
+  color: #212529;
+}
+
+.status-badge.warning {
+  background-color: #fd7e14;
+  color: #fff;
+}
+
+.last-update {
+  color: #6c757d;
+  font-size: 0.85rem;
+}
+
+/* Loading and Empty States */
+.loading-state, .empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: #6c757d;
+  font-size: 1.1rem;
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .adminv2-container {
+    flex-direction: column;
+  }
+  
+  .adminv2-sidenav {
+    width: 100%;
+    height: auto;
+  }
+  
+  .summary-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .patient-table-container {
+    overflow-x: auto;
+  }
+  
+  .adminv2-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}

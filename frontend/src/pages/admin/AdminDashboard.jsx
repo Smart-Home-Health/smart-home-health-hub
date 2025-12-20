@@ -236,6 +236,22 @@ const AdminDashboard = () => {
             </button>
           </div>
         </div>
+
+        <div className="admin-card" style={{ borderLeft: '4px solid #e74c3c' }}>
+          <h3 className="admin-card-title">🚀 Try New Admin Dashboard</h3>
+          <p style={{ color: '#666', marginBottom: '1rem' }}>
+            Check out the redesigned admin interface with improved patient overview and management
+          </p>
+          <div className="admin-actions">
+            <a 
+              href="/adminv2" 
+              className="btn btn-primary"
+              style={{ backgroundColor: '#e74c3c' }}
+            >
+              Go to Admin V2 (Beta)
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );
