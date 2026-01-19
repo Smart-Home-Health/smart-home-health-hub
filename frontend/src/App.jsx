@@ -27,6 +27,7 @@ import AdminV2EquipmentHistory from './pages/admin-v2/AdminV2EquipmentHistory';
 import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
 import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
 import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
+import AdminV2Schedule from './pages/admin-v2/AdminV2Schedule';
 import FirstRunSetup from './components/FirstRunSetup';
 import LoginModal from './components/LoginModal';
 import "./App.css";
@@ -87,6 +88,7 @@ function AppContent() {
             <Route path="/admin-v2/patients" element={<AdminV2Patients />} />
             <Route path="/admin-v2/providers" element={<AdminV2Providers />} />
             <Route path="/admin-v2/businesses" element={<AdminV2Businesses />} />
+            <Route path="/admin-v2/schedule" element={<AdminV2Schedule />} />
             <Route path="/admin-v2/*" element={<AdminV2Dashboard />} />
           </Routes>
         </Layout>

@@ -336,10 +336,10 @@ const AdminV2Providers = () => {
 
   // Patient selector modal
   const renderPatientModal = () => (
-    <div className="admin-v2-modal-overlay">
-      <div className="admin-v2-modal admin-v2-modal-sm">
+    <div className="admin-v2-modal-overlay" onClick={() => selectedPatient && setShowPatientModal(false)}>
+      <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
         <div className="admin-v2-modal-header">
-          <h3>Select Patient</h3>
+          <h2>Select Patient</h2>
           {selectedPatient && (
             <button 
               className="admin-v2-modal-close"
@@ -353,21 +353,23 @@ const AdminV2Providers = () => {
           {patients.length === 0 ? (
             <div className="admin-v2-empty">No patients found</div>
           ) : (
-            <div className="admin-v2-patient-list">
-              {patients.map(patient => (
+            <div className="admin-v2-patient-selector-list">
+              {patients.filter(p => p.is_active).map(patient => (
                 <button
                   key={patient.id}
-                  className={`admin-v2-patient-list-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
+                  className={`admin-v2-patient-selector-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
                   onClick={() => handleSelectPatient(patient)}
                 >
-                  <div className="admin-v2-patient-list-avatar">
+                  <div className="admin-v2-patient-avatar">
                     {patient.first_name?.[0]}{patient.last_name?.[0]}
                   </div>
-                  <div className="admin-v2-patient-list-info">
-                    <span className="name">{patient.first_name} {patient.last_name}</span>
-                    {patient.date_of_birth && (
-                      <span className="dob">DOB: {patient.date_of_birth}</span>
-                    )}
+                  <div className="admin-v2-patient-selector-info">
+                    <span className="admin-v2-patient-name">
+                      {patient.first_name} {patient.last_name}
+                    </span>
+                    <span className="admin-v2-patient-meta">
+                      {patient.room || 'No room assigned'}
+                    </span>
                   </div>
                 </button>
               ))}

@@ -14,13 +14,15 @@ import {
   MonitoringIcon,
   AdminSettingsIcon,
   BackArrowIcon,
-  UsersIcon
+  UsersIcon,
+  CalendarIcon
 } from '../../components/Icons';
 import './AdminV2.css';
 
 // Side navigation items - main app sections
 const sideNavItems = [
   { path: '/admin-v2', label: 'Dashboard', Icon: DashboardIcon },
+  { path: '/admin-v2/schedule', label: 'Schedule', Icon: CalendarIcon, requiredPermissions: ['medications.view', 'care_tasks.view'] },
   { path: '/admin-v2/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.view', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
   { path: '/admin-v2/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.view', 'medications.create', 'medications.update', 'medications.delete'] },
   { path: '/admin-v2/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.view', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },

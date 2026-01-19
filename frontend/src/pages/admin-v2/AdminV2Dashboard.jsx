@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import {
@@ -8,71 +8,8 @@ import {
   EquipmentIcon,
   PlusIcon
 } from '../../components/Icons';
+import { API_BASE_URL } from '../../config';
 import './AdminV2.css';
-
-// Hardcoded patient data for now
-const mockPatients = [
-  {
-    id: 1,
-    name: 'John Smith',
-    dateOfBirth: '1945-03-15',
-    room: 'Room 101',
-    status: 'active',
-    dueCounts: {
-      medications: 3,
-      equipment: 1,
-      tasks: 2
-    }
-  },
-  {
-    id: 2,
-    name: 'Mary Johnson',
-    dateOfBirth: '1952-08-22',
-    room: 'Room 102',
-    status: 'active',
-    dueCounts: {
-      medications: 0,
-      equipment: 2,
-      tasks: 0
-    }
-  },
-  {
-    id: 3,
-    name: 'Robert Williams',
-    dateOfBirth: '1948-11-30',
-    room: 'Room 103',
-    status: 'active',
-    dueCounts: {
-      medications: 5,
-      equipment: 0,
-      tasks: 4
-    }
-  },
-  {
-    id: 4,
-    name: 'Patricia Brown',
-    dateOfBirth: '1960-01-08',
-    room: 'Room 104',
-    status: 'inactive',
-    dueCounts: {
-      medications: 0,
-      equipment: 0,
-      tasks: 0
-    }
-  },
-  {
-    id: 5,
-    name: 'Michael Davis',
-    dateOfBirth: '1955-06-17',
-    room: 'Room 105',
-    status: 'active',
-    dueCounts: {
-      medications: 1,
-      equipment: 3,
-      tasks: 1
-    }
-  },
-];
 
 // Calculate age from DOB
 const calculateAge = (dob) => {
@@ -103,12 +40,49 @@ const getDueStatus = (count) => {
 };
 
 const AdminV2Dashboard = () => {
-  // Calculate summary stats
-  const totalPatients = mockPatients.length;
-  const activePatients = mockPatients.filter(p => p.status === 'active').length;
-  const totalMedsDue = mockPatients.reduce((sum, p) => sum + p.dueCounts.medications, 0);
-  const totalTasksDue = mockPatients.reduce((sum, p) => sum + p.dueCounts.tasks, 0);
-  const totalEquipmentDue = mockPatients.reduce((sum, p) => sum + p.dueCounts.equipment, 0);
+  const [patients, setPatients] = useState([]);
+  const [summary, setSummary] = useState({
+    total_patients: 0,
+    active_patients: 0,
+    medications_due: 0,
+    tasks_due: 0,
+    equipment_due: 0
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE_URL}/api/dashboard/summary`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch dashboard data');
+      }
+      
+      const data = await response.json();
+      setPatients(data.patients || []);
+      setSummary(data.summary || {
+        total_patients: 0,
+        active_patients: 0,
+        medications_due: 0,
+        tasks_due: 0,
+        equipment_due: 0
+      });
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <AdminV2Layout>
@@ -120,6 +94,16 @@ const AdminV2Dashboard = () => {
           </p>
         </div>
 
+        {/* Error State */}
+        {error && (
+          <div className="admin-v2-error-message">
+            <p>Error loading dashboard: {error}</p>
+            <button onClick={fetchDashboardData} className="admin-v2-btn admin-v2-btn-primary">
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Summary Statistics */}
         <div className="admin-v2-summary-stats">
           <div className="admin-v2-stat-card">
@@ -127,7 +111,7 @@ const AdminV2Dashboard = () => {
               <PatientsIcon size={24} />
             </div>
             <div className="admin-v2-stat-info">
-              <h4>{activePatients}/{totalPatients}</h4>
+              <h4>{loading ? '...' : `${summary.active_patients}/${summary.total_patients}`}</h4>
               <p>Active Patients</p>
             </div>
           </div>
@@ -136,7 +120,7 @@ const AdminV2Dashboard = () => {
               <MedicationsIcon size={24} />
             </div>
             <div className="admin-v2-stat-info">
-              <h4>{totalMedsDue}</h4>
+              <h4>{loading ? '...' : summary.medications_due}</h4>
               <p>Medications Due</p>
             </div>
           </div>
@@ -145,7 +129,7 @@ const AdminV2Dashboard = () => {
               <TasksIcon size={24} />
             </div>
             <div className="admin-v2-stat-info">
-              <h4>{totalTasksDue}</h4>
+              <h4>{loading ? '...' : summary.tasks_due}</h4>
               <p>Tasks Due</p>
             </div>
           </div>
@@ -154,7 +138,7 @@ const AdminV2Dashboard = () => {
               <EquipmentIcon size={24} />
             </div>
             <div className="admin-v2-stat-info">
-              <h4>{totalEquipmentDue}</h4>
+              <h4>{loading ? '...' : summary.equipment_due}</h4>
               <p>Equipment Due</p>
             </div>
           </div>
@@ -168,56 +152,84 @@ const AdminV2Dashboard = () => {
           </Link>
         </div>
 
+        {/* Loading State */}
+        {loading && (
+          <div className="admin-v2-loading">
+            <p>Loading patients...</p>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && patients.length === 0 && !error && (
+          <div className="admin-v2-empty-state">
+            <PatientsIcon size={48} />
+            <h3>No patients yet</h3>
+            <p>Add your first patient to get started</p>
+            <Link to="/admin-v2/patients/create" className="admin-v2-btn admin-v2-btn-primary">
+              <PlusIcon size={16} /> Add Patient
+            </Link>
+          </div>
+        )}
+
         {/* Patients Grid */}
-        <div className="admin-v2-patients-grid">
-          {mockPatients.map((patient) => (
-            <div key={patient.id} className="admin-v2-patient-card">
-              <div className="admin-v2-patient-header">
-                <div className="admin-v2-patient-avatar">
-                  {getInitials(patient.name)}
+        {!loading && patients.length > 0 && (
+          <div className="admin-v2-patients-grid">
+            {patients.map((patient) => (
+              <div key={patient.id} className="admin-v2-patient-card">
+                <div className="admin-v2-patient-header">
+                  <div className="admin-v2-patient-avatar">
+                    {getInitials(patient.name)}
+                  </div>
+                  <div className="admin-v2-patient-info">
+                    <h3 className="admin-v2-patient-name">{patient.name}</h3>
+                    <p className="admin-v2-patient-meta">
+                      {patient.date_of_birth ? `Age ${calculateAge(patient.date_of_birth)}` : 'Age unknown'}
+                      {patient.room ? ` • ${patient.room}` : ''}
+                    </p>
+                  </div>
+                  <span className={`admin-v2-patient-status ${patient.status}`}>
+                    {patient.status}
+                  </span>
                 </div>
-                <div className="admin-v2-patient-info">
-                  <h3 className="admin-v2-patient-name">{patient.name}</h3>
-                  <p className="admin-v2-patient-meta">
-                    Age {calculateAge(patient.dateOfBirth)} • {patient.room}
-                  </p>
-                </div>
-                <span className={`admin-v2-patient-status ${patient.status}`}>
-                  {patient.status}
-                </span>
-              </div>
 
-              {/* Due Counters */}
-              <div className="admin-v2-due-counters">
-                <Link 
-                  to={`/admin-v2/medications?patient=${patient.id}`}
-                  className={`admin-v2-due-item ${getDueStatus(patient.dueCounts.medications)}`}
-                >
-                  <p className="admin-v2-due-count">{patient.dueCounts.medications}</p>
-                  <p className="admin-v2-due-label">Meds Due</p>
-                </Link>
-                <div className={`admin-v2-due-item ${getDueStatus(patient.dueCounts.equipment)}`}>
-                  <p className="admin-v2-due-count">{patient.dueCounts.equipment}</p>
-                  <p className="admin-v2-due-label">Equip Due</p>
+                {/* Due Counters */}
+                <div className="admin-v2-due-counters">
+                  <Link 
+                    to={`/admin-v2/medications?patient=${patient.id}`}
+                    className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.medications || 0)}`}
+                  >
+                    <p className="admin-v2-due-count">{patient.due_counts?.medications || 0}</p>
+                    <p className="admin-v2-due-label">Meds Due</p>
+                  </Link>
+                  <Link 
+                    to={`/admin-v2/equipment?patient=${patient.id}`}
+                    className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.equipment || 0)}`}
+                  >
+                    <p className="admin-v2-due-count">{patient.due_counts?.equipment || 0}</p>
+                    <p className="admin-v2-due-label">Equip Due</p>
+                  </Link>
+                  <Link 
+                    to={`/admin-v2/care-tasks?patient=${patient.id}`}
+                    className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.tasks || 0)}`}
+                  >
+                    <p className="admin-v2-due-count">{patient.due_counts?.tasks || 0}</p>
+                    <p className="admin-v2-due-label">Tasks Due</p>
+                  </Link>
                 </div>
-                <div className={`admin-v2-due-item ${getDueStatus(patient.dueCounts.tasks)}`}>
-                  <p className="admin-v2-due-count">{patient.dueCounts.tasks}</p>
-                  <p className="admin-v2-due-label">Tasks Due</p>
-                </div>
-              </div>
 
-              {/* Actions */}
-              <div className="admin-v2-patient-actions">
-                <Link to={`/admin-v2/patients/${patient.id}`} className="admin-v2-btn">
-                  View Details
-                </Link>
-                <Link to={`/admin-v2/patients/${patient.id}/schedule`} className="admin-v2-btn admin-v2-btn-primary">
-                  Schedule
-                </Link>
+                {/* Actions */}
+                <div className="admin-v2-patient-actions">
+                  <Link to={`/admin-v2/patients/${patient.id}`} className="admin-v2-btn">
+                    View Details
+                  </Link>
+                  <Link to={`/admin-v2/schedule?patient=${patient.id}`} className="admin-v2-btn admin-v2-btn-primary">
+                    Schedule
+                  </Link>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </AdminV2Layout>
   );
