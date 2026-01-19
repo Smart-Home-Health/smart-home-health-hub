@@ -94,14 +94,16 @@ const Layout = ({ children }) => {
   const isAdminRoute = location.pathname.startsWith('/admin');
   const isAdminV2Route = location.pathname.startsWith('/admin-v2');
   
-  // Admin V2 has its own layout, so just render children directly
+  // Admin V2 has its own layout, but needs the patient provider
   if (isAdminV2Route) {
     return (
-      <div className="layout">
-        <main className="main-content">
-          {children}
-        </main>
-      </div>
+      <AdminPatientProvider>
+        <div className="layout">
+          <main className="main-content">
+            {children}
+          </main>
+        </div>
+      </AdminPatientProvider>
     );
   }
   

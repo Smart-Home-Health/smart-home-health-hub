@@ -1,6 +1,7 @@
-import React from 'react';
-import { Link, useLocation, Outlet, useSearchParams } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { Link, useLocation, Outlet, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import logoImage from '../../assets/logo2.png';
 import {
   DashboardIcon,
@@ -15,7 +16,9 @@ import {
   AdminSettingsIcon,
   BackArrowIcon,
   UsersIcon,
-  CalendarIcon
+  CalendarIcon,
+  ChevronRightIcon,
+  XIcon
 } from '../../components/Icons';
 import './AdminV2.css';
 
@@ -100,9 +103,55 @@ const getCurrentSection = (pathname) => {
 
 const AdminV2Layout = ({ children }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
+  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  const dropdownRef = useRef(null);
   const currentSection = getCurrentSection(location.pathname);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowPatientDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Calculate age from DOB
+  const calculateAge = (dob) => {
+    if (!dob) return null;
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  // Get initials from patient
+  const getInitials = (patient) => {
+    return `${patient.first_name?.[0] || ''}${patient.last_name?.[0] || ''}`.toUpperCase();
+  };
+
+  // Handle patient selection - update context and URL if on a patient-specific page
+  const handleSelectPatient = (patient) => {
+    selectPatient(patient);
+    setShowPatientDropdown(false);
+    
+    // Update URL param if we're on a page that uses patient param
+    const patientPages = ['/admin-v2/medications', '/admin-v2/care-tasks', '/admin-v2/equipment', '/admin-v2/nutrition', '/admin-v2/schedule', '/admin-v2/providers'];
+    const isPatientPage = patientPages.some(p => location.pathname.startsWith(p));
+    if (isPatientPage && patient) {
+      navigate(`${location.pathname}?patient=${patient.id}`);
+    }
+  };
   
   // Permission helper - check if user has any of the specified permissions
   const hasAnyPermission = (permissions) => {
@@ -145,6 +194,91 @@ const AdminV2Layout = ({ children }) => {
             <img src={logoImage} alt="SHH Logo" className="admin-v2-logo" />
             <span className="admin-v2-logo-text">Admin V2</span>
           </Link>
+        </div>
+
+        {/* Patient Selector */}
+        <div className="admin-v2-patient-selector" ref={dropdownRef}>
+          <button 
+            className="admin-v2-patient-selector-btn"
+            onClick={() => setShowPatientDropdown(!showPatientDropdown)}
+          >
+            {selectedPatient ? (
+              <>
+                <div className="admin-v2-patient-selector-avatar">
+                  {getInitials(selectedPatient)}
+                </div>
+                <div className="admin-v2-patient-selector-details">
+                  <span className="admin-v2-patient-selector-name">
+                    {selectedPatient.first_name} {selectedPatient.last_name}
+                  </span>
+                  <span className="admin-v2-patient-selector-meta">
+                    {calculateAge(selectedPatient.date_of_birth) !== null 
+                      ? `Age ${calculateAge(selectedPatient.date_of_birth)}`
+                      : 'Age unknown'}
+                  </span>
+                </div>
+                <ChevronRightIcon size={16} className={`admin-v2-patient-selector-arrow ${showPatientDropdown ? 'open' : ''}`} />
+              </>
+            ) : (
+              <>
+                <div className="admin-v2-patient-selector-avatar empty">
+                  <PatientsIcon size={16} />
+                </div>
+                <div className="admin-v2-patient-selector-details">
+                  <span className="admin-v2-patient-selector-name">Select Patient</span>
+                  <span className="admin-v2-patient-selector-meta">No patient selected</span>
+                </div>
+                <ChevronRightIcon size={16} className={`admin-v2-patient-selector-arrow ${showPatientDropdown ? 'open' : ''}`} />
+              </>
+            )}
+          </button>
+
+          {showPatientDropdown && (
+            <div className="admin-v2-patient-dropdown">
+              <div className="admin-v2-patient-dropdown-header">
+                <span>Select Patient</span>
+                {selectedPatient && (
+                  <button 
+                    className="admin-v2-patient-dropdown-clear"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      selectPatient(null);
+                      setShowPatientDropdown(false);
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="admin-v2-patient-dropdown-list">
+                {loadingPatients ? (
+                  <div className="admin-v2-patient-dropdown-loading">Loading...</div>
+                ) : patients.filter(p => p.is_active).length === 0 ? (
+                  <div className="admin-v2-patient-dropdown-empty">No patients found</div>
+                ) : (
+                  patients.filter(p => p.is_active).map(patient => (
+                    <button
+                      key={patient.id}
+                      className={`admin-v2-patient-dropdown-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
+                      onClick={() => handleSelectPatient(patient)}
+                    >
+                      <div className="admin-v2-patient-dropdown-avatar">
+                        {getInitials(patient)}
+                      </div>
+                      <div className="admin-v2-patient-dropdown-info">
+                        <span className="name">{patient.first_name} {patient.last_name}</span>
+                        <span className="age">
+                          {calculateAge(patient.date_of_birth) !== null 
+                            ? `Age ${calculateAge(patient.date_of_birth)}`
+                            : 'Age unknown'}
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
         
         <nav className="admin-v2-sidebar-nav">

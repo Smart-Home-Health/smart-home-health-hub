@@ -46,6 +46,194 @@
   color: #58a6ff;
 }
 
+/* Patient Selector in Sidebar */
+.admin-v2-patient-selector {
+  position: relative;
+  padding: 0.75rem;
+  border-bottom: 1px solid #30363d;
+}
+
+.admin-v2-patient-selector-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #e6edf3;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-v2-patient-selector-btn:hover {
+  background: #30363d;
+  border-color: #484f58;
+}
+
+.admin-v2-patient-selector-avatar {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #58a6ff 0%, #3b82f6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.admin-v2-patient-selector-avatar.empty {
+  background: #30363d;
+  color: #8b949e;
+}
+
+.admin-v2-patient-selector-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: hidden;
+}
+
+.admin-v2-patient-selector-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.admin-v2-patient-selector-meta {
+  font-size: 0.7rem;
+  color: #8b949e;
+}
+
+.admin-v2-patient-selector-arrow {
+  color: #8b949e;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.admin-v2-patient-selector-arrow.open {
+  transform: rotate(90deg);
+}
+
+/* Patient Dropdown */
+.admin-v2-patient-dropdown {
+  position: absolute;
+  top: calc(100% - 0.5rem);
+  left: 0.75rem;
+  right: 0.75rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-v2-patient-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border-bottom: 1px solid #30363d;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #8b949e;
+}
+
+.admin-v2-patient-dropdown-clear {
+  background: none;
+  border: none;
+  color: #f85149;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.admin-v2-patient-dropdown-clear:hover {
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.admin-v2-patient-dropdown-list {
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.admin-v2-patient-dropdown-loading,
+.admin-v2-patient-dropdown-empty {
+  padding: 1rem;
+  text-align: center;
+  color: #8b949e;
+  font-size: 0.85rem;
+}
+
+.admin-v2-patient-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  color: #e6edf3;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.admin-v2-patient-dropdown-item:hover {
+  background: #21262d;
+}
+
+.admin-v2-patient-dropdown-item.selected {
+  background: rgba(88, 166, 255, 0.1);
+  border-left-color: #58a6ff;
+}
+
+.admin-v2-patient-dropdown-avatar {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #58a6ff 0%, #3b82f6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.admin-v2-patient-dropdown-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-v2-patient-dropdown-info .name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-v2-patient-dropdown-info .age {
+  font-size: 0.7rem;
+  color: #8b949e;
+}
+
 .admin-v2-sidebar-nav {
   flex: 1;
   padding: 0.5rem 0;
@@ -3690,4 +3878,215 @@
 .admin-v2-stat-icon.nutrition {
   background: rgba(126, 231, 135, 0.15);
   color: #7ee787;
+}
+
+/* ===== PRINT STYLES ===== */
+@media print {
+  /* Hide everything by default when printing schedule */
+  body.printing-schedule * {
+    visibility: hidden;
+  }
+
+  /* Show only the schedule container and its contents */
+  body.printing-schedule .admin-v2-page,
+  body.printing-schedule .admin-v2-page *,
+  body.printing-schedule .schedule-patient-header,
+  body.printing-schedule .schedule-patient-header *,
+  body.printing-schedule .schedule-section-title,
+  body.printing-schedule .admin-v2-schedule-nav,
+  body.printing-schedule .admin-v2-schedule-nav *,
+  body.printing-schedule .admin-v2-summary-stats,
+  body.printing-schedule .admin-v2-summary-stats *,
+  body.printing-schedule .admin-v2-schedule-container,
+  body.printing-schedule .admin-v2-schedule-container * {
+    visibility: visible;
+  }
+
+  /* Hide sidebar, nav, modals, and buttons */
+  body.printing-schedule .admin-v2-sidebar,
+  body.printing-schedule .admin-v2-topbar,
+  body.printing-schedule .admin-v2-modal-overlay,
+  body.printing-schedule .admin-v2-btn,
+  body.printing-schedule .admin-v2-date-picker,
+  body.printing-schedule .schedule-edit-patient-btn {
+    display: none !important;
+  }
+
+  /* Position the page correctly */
+  body.printing-schedule .admin-v2-page {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+  }
+
+  body.printing-schedule .admin-v2-layout {
+    display: block;
+  }
+
+  body.printing-schedule .admin-v2-main {
+    margin-left: 0;
+    padding: 0;
+  }
+
+  /* Print-friendly colors */
+  body.printing-schedule .schedule-patient-header,
+  body.printing-schedule .admin-v2-schedule-nav,
+  body.printing-schedule .admin-v2-summary-stats,
+  body.printing-schedule .admin-v2-schedule-container,
+  body.printing-schedule .admin-v2-schedule-header,
+  body.printing-schedule .admin-v2-schedule-row,
+  body.printing-schedule .admin-v2-schedule-item,
+  body.printing-schedule .admin-v2-stat-card {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #ccc !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Patient header for print */
+  body.printing-schedule .schedule-patient-header {
+    border-bottom: 2px solid #000;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  body.printing-schedule .schedule-patient-avatar {
+    background: #333 !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body.printing-schedule .schedule-patient-name-row h2 {
+    color: #000 !important;
+  }
+
+  /* Section title */
+  body.printing-schedule .schedule-section-title {
+    color: #000 !important;
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Date display for print */
+  body.printing-schedule .admin-v2-schedule-date {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #000 !important;
+    margin-bottom: 0.5rem;
+  }
+
+  body.printing-schedule .admin-v2-today-badge {
+    background: #333 !important;
+    color: #fff !important;
+  }
+
+  /* Summary stats for print */
+  body.printing-schedule .admin-v2-summary-stats {
+    gap: 1rem;
+    margin-bottom: 1rem !important;
+  }
+
+  body.printing-schedule .admin-v2-stat-card {
+    border: 1px solid #000;
+    padding: 0.5rem;
+  }
+
+  body.printing-schedule .admin-v2-stat-icon {
+    display: none;
+  }
+
+  body.printing-schedule .admin-v2-stat-info h4,
+  body.printing-schedule .admin-v2-stat-info p {
+    color: #000 !important;
+  }
+
+  /* Schedule grid for print */
+  body.printing-schedule .admin-v2-schedule-container {
+    border: 1px solid #000;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  body.printing-schedule .admin-v2-schedule-header {
+    border-bottom: 2px solid #000;
+  }
+
+  body.printing-schedule .admin-v2-schedule-time-col,
+  body.printing-schedule .admin-v2-schedule-col {
+    color: #000 !important;
+    border-color: #ccc !important;
+  }
+
+  body.printing-schedule .admin-v2-schedule-col span {
+    color: #000 !important;
+  }
+
+  body.printing-schedule .admin-v2-schedule-body {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  body.printing-schedule .admin-v2-schedule-row {
+    border-bottom: 1px solid #ccc;
+    page-break-inside: avoid;
+  }
+
+  body.printing-schedule .admin-v2-schedule-row.current-hour {
+    background: #f5f5f5 !important;
+    border-left: none;
+  }
+
+  body.printing-schedule .admin-v2-hour-label {
+    color: #000 !important;
+  }
+
+  /* Schedule items for print */
+  body.printing-schedule .admin-v2-schedule-item {
+    border: 1px solid #999;
+    page-break-inside: avoid;
+  }
+
+  body.printing-schedule .admin-v2-schedule-item.medication {
+    border-left: 3px solid #d14 !important;
+  }
+
+  body.printing-schedule .admin-v2-schedule-item.nutrition {
+    border-left: 3px solid #0a0 !important;
+  }
+
+  body.printing-schedule .admin-v2-schedule-item.care-task {
+    border-left: 3px solid #609 !important;
+  }
+
+  body.printing-schedule .admin-v2-schedule-item.completed {
+    background: #e8f5e9 !important;
+  }
+
+  body.printing-schedule .admin-v2-schedule-item-name,
+  body.printing-schedule .admin-v2-schedule-item-time,
+  body.printing-schedule .admin-v2-schedule-item-dose,
+  body.printing-schedule .admin-v2-schedule-item-desc,
+  body.printing-schedule .admin-v2-schedule-item-category {
+    color: #000 !important;
+  }
+
+  body.printing-schedule .admin-v2-schedule-item-check {
+    color: #0a0 !important;
+  }
+
+  /* Print header info */
+  body.printing-schedule::before {
+    content: none;
+  }
+
+  /* Page setup */
+  @page {
+    size: A4 landscape;
+    margin: 1cm;
+  }
 }

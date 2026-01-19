@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import { PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   CalendarIcon,
   ChevronLeftIcon,
@@ -14,29 +16,25 @@ import {
   ClockIcon,
   PatientsIcon,
   XIcon,
-  EditIcon
+  EditIcon,
+  PrintIcon
 } from '../../components/Icons';
 import './AdminV2.css';
-
-// Get initials from name
-const getInitials = (name) => {
-  return name
-    .split(' ')
-    .map(part => part[0])
-    .join('')
-    .toUpperCase();
-};
 
 const AdminV2Schedule = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const scrollContainerRef = useRef(null);
+  const { 
+    patients, 
+    selectedPatient: contextPatient, 
+    selectPatient: setContextPatient,
+    loadingPatients 
+  } = useAdminPatient();
   
-  // Patient state
-  const [patients, setPatients] = useState([]);
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  // Use context patient as the source of truth
+  const selectedPatient = contextPatient;
   const [showPatientModal, setShowPatientModal] = useState(false);
-  const [loadingPatients, setLoadingPatients] = useState(true);
   
   // Schedule date state
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -88,25 +86,25 @@ const AdminV2Schedule = () => {
     setSelectedDate(new Date());
   };
 
-  // Fetch patients on mount
-  useEffect(() => {
-    fetchPatients();
-  }, []);
-
-  // Check for patient param and load patient
+  // Check URL params for patient ID or use context patient
   useEffect(() => {
     const patientId = searchParams.get('patient');
     if (patientId && patients.length > 0) {
       const patient = patients.find(p => p.id === parseInt(patientId));
-      if (patient) {
-        setSelectedPatient(patient);
-      } else {
-        setShowPatientModal(true);
+      if (patient && patient.id !== contextPatient?.id) {
+        setContextPatient(patient);
       }
-    } else if (!patientId && patients.length > 0) {
+    } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
       setShowPatientModal(true);
     }
-  }, [patients, searchParams]);
+  }, [searchParams, patients, loadingPatients]);
+
+  // Update URL when context patient changes
+  useEffect(() => {
+    if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
+      setSearchParams({ patient: contextPatient.id });
+    }
+  }, [contextPatient]);
 
   // Fetch schedule when patient or date changes
   useEffect(() => {
@@ -125,22 +123,6 @@ const AdminV2Schedule = () => {
       }
     }
   }, [scheduleData, selectedDate]);
-
-  const fetchPatients = async () => {
-    try {
-      const response = await fetch(`${config.apiUrl}/api/patients`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPatients(data);
-      }
-    } catch (err) {
-      console.error('Error fetching patients:', err);
-    } finally {
-      setLoadingPatients(false);
-    }
-  };
 
   const fetchSchedule = async () => {
     if (!selectedPatient) return;
@@ -174,13 +156,18 @@ const AdminV2Schedule = () => {
   };
 
   const handleSelectPatient = (patient) => {
-    setSelectedPatient(patient);
-    setSearchParams({ patient: patient.id });
+    setContextPatient(patient);
     setShowPatientModal(false);
   };
 
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
+  const handlePrintSchedule = () => {
+    // Add print class to body for print-specific styles
+    document.body.classList.add('printing-schedule');
+    window.print();
+    // Remove the class after printing
+    setTimeout(() => {
+      document.body.classList.remove('printing-schedule');
+    }, 100);
   };
 
   // Group items by hour
@@ -230,31 +217,8 @@ const AdminV2Schedule = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        {/* Patient Header */}
         {selectedPatient ? (
           <>
-            {/* Patient Context Header */}
-            <div className="schedule-patient-header">
-              <div className="schedule-patient-info">
-                <div className="schedule-patient-avatar">
-                  {getInitials(`${selectedPatient.first_name} ${selectedPatient.last_name}`)}
-                </div>
-                <div className="schedule-patient-name-row">
-                  <h2>{selectedPatient.first_name} {selectedPatient.last_name}</h2>
-                  <button 
-                    className="schedule-edit-patient-btn"
-                    onClick={handleChangePatient}
-                    title="Change Patient"
-                  >
-                    <EditIcon size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Section Title */}
-            <h1 className="schedule-section-title">Daily Schedule</h1>
-
             {error && (
               <div className="admin-v2-error-banner">{error}</div>
             )}
@@ -301,6 +265,16 @@ const AdminV2Schedule = () => {
                 onChange={(e) => setSelectedDate(new Date(e.target.value + 'T00:00:00'))}
                 className="admin-v2-date-picker"
               />
+
+              <button 
+                className="admin-v2-btn admin-v2-btn-primary"
+                onClick={handlePrintSchedule}
+                title="Print Schedule"
+                style={{ marginLeft: 'auto' }}
+              >
+                <PrintIcon size={16} />
+                Print
+              </button>
             </div>
 
             {/* Summary Stats */}
@@ -480,41 +454,13 @@ const AdminV2Schedule = () => {
 
         {/* Patient Selection Modal */}
         {showPatientModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => selectedPatient && setShowPatientModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Select Patient</h2>
-                {selectedPatient && (
-                  <button className="admin-v2-modal-close" onClick={() => setShowPatientModal(false)}>
-                    <XIcon size={20} />
-                  </button>
-                )}
-              </div>
-              <div className="admin-v2-modal-body">
-                <div className="admin-v2-patient-selector-list">
-                  {patients.filter(p => p.is_active).map(patient => (
-                    <button
-                      key={patient.id}
-                      className={`admin-v2-patient-selector-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
-                      onClick={() => handleSelectPatient(patient)}
-                    >
-                      <div className="admin-v2-patient-avatar">
-                        {patient.first_name?.[0]}{patient.last_name?.[0]}
-                      </div>
-                      <div className="admin-v2-patient-selector-info">
-                        <span className="admin-v2-patient-name">
-                          {patient.first_name} {patient.last_name}
-                        </span>
-                        <span className="admin-v2-patient-meta">
-                          {patient.room || 'No room assigned'}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <PatientSelectorModal
+            patients={patients}
+            selectedPatient={selectedPatient}
+            onSelectPatient={handleSelectPatient}
+            onClose={() => setShowPatientModal(false)}
+            loading={loadingPatients}
+          />
         )}
       </div>
     </AdminV2Layout>

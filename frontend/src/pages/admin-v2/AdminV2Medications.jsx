@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import { PatientHeader, PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   PlusIcon,
   EditIcon,
@@ -16,12 +18,16 @@ import './AdminV2.css';
 const AdminV2Medications = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { 
+    patients, 
+    selectedPatient: contextPatient, 
+    selectPatient: setContextPatient,
+    loadingPatients 
+  } = useAdminPatient();
   
-  // Patient state
-  const [patients, setPatients] = useState([]);
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  // Use context patient as the source of truth
+  const selectedPatient = contextPatient;
   const [showPatientModal, setShowPatientModal] = useState(false);
-  const [loadingPatients, setLoadingPatients] = useState(true);
   
   // Medications state
   const [medications, setMedications] = useState([]);
@@ -73,24 +79,25 @@ const AdminV2Medications = () => {
     return user.permissions?.includes(permission) || false;
   };
 
-  // Fetch patients on mount
-  useEffect(() => {
-    fetchPatients();
-  }, []);
-
-  // Check URL params for patient ID
+  // Check URL params for patient ID or use context patient
   useEffect(() => {
     const patientId = searchParams.get('patient');
     if (patientId && patients.length > 0) {
       const patient = patients.find(p => p.id === parseInt(patientId));
-      if (patient) {
-        setSelectedPatient(patient);
+      if (patient && patient.id !== contextPatient?.id) {
+        setContextPatient(patient);
       }
-    } else if (!patientId && patients.length > 0 && !selectedPatient) {
-      // No patient in URL and not selected, show selector
+    } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
       setShowPatientModal(true);
     }
-  }, [searchParams, patients]);
+  }, [searchParams, patients, loadingPatients]);
+
+  // Update URL when context patient changes
+  useEffect(() => {
+    if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
+      setSearchParams({ patient: contextPatient.id });
+    }
+  }, [contextPatient]);
 
   // Fetch medications and providers when patient is selected
   useEffect(() => {
@@ -99,23 +106,6 @@ const AdminV2Medications = () => {
       fetchProviders();
     }
   }, [selectedPatient]);
-
-  const fetchPatients = async () => {
-    try {
-      setLoadingPatients(true);
-      const response = await fetch(`${config.apiUrl}/api/patients?active_only=false`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPatients(data);
-      }
-    } catch (err) {
-      console.error('Error fetching patients:', err);
-    } finally {
-      setLoadingPatients(false);
-    }
-  };
 
   const fetchMedications = async () => {
     if (!selectedPatient) return [];
@@ -176,7 +166,7 @@ const AdminV2Medications = () => {
   };
 
   const handleSelectPatient = (patient) => {
-    setSelectedPatient(patient);
+    setContextPatient(patient);
     setSearchParams({ patient: patient.id });
     setShowPatientModal(false);
   };
@@ -495,15 +485,6 @@ const AdminV2Medications = () => {
     setSelectedMedication(null);
   };
 
-  const getInitials = (name) => {
-    return name
-      .split(' ')
-      .map(part => part[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
   // Loading state
   if (loadingPatients) {
     return (
@@ -520,23 +501,10 @@ const AdminV2Medications = () => {
         {selectedPatient ? (
           <>
             {/* Patient Context Header */}
-            <div className="schedule-patient-header">
-              <div className="schedule-patient-info">
-                <div className="schedule-patient-avatar">
-                  {getInitials(selectedPatient.full_name || selectedPatient.first_name + ' ' + selectedPatient.last_name)}
-                </div>
-                <div className="schedule-patient-name-row">
-                  <h2>{selectedPatient.full_name || `${selectedPatient.first_name} ${selectedPatient.last_name}`}</h2>
-                  <button 
-                    className="schedule-edit-patient-btn"
-                    onClick={handleChangePatient}
-                    title="Change Patient"
-                  >
-                    <EditIcon size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
+            <PatientHeader 
+              patient={selectedPatient} 
+              onChangePatient={handleChangePatient} 
+            />
 
             {/* Section Title */}
             <h1 className="schedule-section-title">Medications Overview</h1>
@@ -701,41 +669,13 @@ const AdminV2Medications = () => {
 
         {/* Patient Selector Modal */}
         {showPatientModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => selectedPatient && setShowPatientModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Select Patient</h2>
-                {selectedPatient && (
-                  <button className="admin-v2-modal-close" onClick={() => setShowPatientModal(false)}>
-                    <XIcon size={20} />
-                  </button>
-                )}
-              </div>
-              <div className="admin-v2-modal-body">
-                <div className="admin-v2-patient-selector-list">
-                  {patients.filter(p => p.is_active).map(patient => (
-                    <button
-                      key={patient.id}
-                      className={`admin-v2-patient-selector-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
-                      onClick={() => handleSelectPatient(patient)}
-                    >
-                      <div className="admin-v2-patient-avatar">
-                        {getInitials(patient.full_name || patient.first_name + ' ' + patient.last_name)}
-                      </div>
-                      <div className="admin-v2-patient-selector-info">
-                        <span className="admin-v2-patient-name">
-                          {patient.full_name || `${patient.first_name} ${patient.last_name}`}
-                        </span>
-                        <span className="admin-v2-patient-meta">
-                          {patient.room || 'No room assigned'}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <PatientSelectorModal
+            patients={patients}
+            selectedPatient={selectedPatient}
+            onSelectPatient={handleSelectPatient}
+            onClose={() => setShowPatientModal(false)}
+            loading={loadingPatients}
+          />
         )}
 
         {/* Create Medication Modal */}

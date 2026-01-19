@@ -1,27 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import { PatientHeader, PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   TasksIcon,
   ClockIcon,
   SearchIcon,
   RefreshIcon,
-  XIcon,
-  EditIcon
+  XIcon
 } from '../../components/Icons';
 import './AdminV2.css';
 
 const AdminV2CareTasksHistory = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { 
+    patients, 
+    selectedPatient: contextPatient, 
+    selectPatient: setContextPatient,
+    loadingPatients 
+  } = useAdminPatient();
   
-  // Patient state
-  const [patients, setPatients] = useState([]);
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  // Use context patient as the source of truth
+  const selectedPatient = contextPatient;
   const [showPatientModal, setShowPatientModal] = useState(false);
-  const [loadingPatients, setLoadingPatients] = useState(true);
   
   // Categories state
   const [categories, setCategories] = useState([]);
@@ -50,28 +55,30 @@ const AdminV2CareTasksHistory = () => {
     return () => clearTimeout(timer);
   }, [searchText]);
 
-  // Fetch patients and categories on mount
+  // Fetch categories on mount
   useEffect(() => {
-    fetchPatients();
     fetchCategories();
   }, []);
 
-  // Check for patient param and load patient
+  // Check for patient param and sync with context
   useEffect(() => {
     const patientId = searchParams.get('patient');
     if (patientId && patients.length > 0) {
       const patient = patients.find(p => p.id === parseInt(patientId));
-      if (patient) {
-        setSelectedPatient(patient);
-      } else if (!selectedPatient) {
-        // Patient ID in URL not found, show modal only if no patient selected
-        setShowPatientModal(true);
+      if (patient && patient.id !== contextPatient?.id) {
+        setContextPatient(patient);
       }
-    } else if (!patientId && patients.length > 0 && !selectedPatient) {
-      // No patient in URL and not selected, show selector
+    } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
       setShowPatientModal(true);
     }
-  }, [patients, searchParams]);
+  }, [patients, searchParams, loadingPatients]);
+
+  // Update URL when context patient changes
+  useEffect(() => {
+    if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
+      setSearchParams({ patient: contextPatient.id });
+    }
+  }, [contextPatient]);
 
   // Fetch history when patient or filters change
   useEffect(() => {
@@ -79,22 +86,6 @@ const AdminV2CareTasksHistory = () => {
       fetchHistory();
     }
   }, [selectedPatient, debouncedSearch, startDate, endDate, statusFilter, categoryFilter, limit]);
-
-  const fetchPatients = async () => {
-    try {
-      const response = await fetch(`${config.apiUrl}/api/patients`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPatients(data);
-      }
-    } catch (err) {
-      console.error('Error fetching patients:', err);
-    } finally {
-      setLoadingPatients(false);
-    }
-  };
 
   const fetchCategories = async () => {
     try {
@@ -157,7 +148,7 @@ const AdminV2CareTasksHistory = () => {
   };
 
   const handleSelectPatient = (patient) => {
-    setSelectedPatient(patient);
+    setContextPatient(patient);
     setSearchParams({ patient: patient.id });
     setShowPatientModal(false);
   };
@@ -207,10 +198,6 @@ const AdminV2CareTasksHistory = () => {
     });
   };
 
-  const getInitials = (firstName, lastName) => {
-    return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
-  };
-
   // Calculate stats
   const stats = {
     total: history.length,
@@ -221,74 +208,16 @@ const AdminV2CareTasksHistory = () => {
   // Get unique categories from history for filter display
   const historyCategories = [...new Set(history.map(h => h.task_category).filter(Boolean))];
 
-  // Patient selector modal
-  const renderPatientModal = () => (
-    <div className="admin-v2-modal-overlay" onClick={() => selectedPatient && setShowPatientModal(false)}>
-      <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-        <div className="admin-v2-modal-header">
-          <h2>Select Patient</h2>
-          {selectedPatient && (
-            <button className="admin-v2-modal-close" onClick={() => setShowPatientModal(false)}>
-              <XIcon size={20} />
-            </button>
-          )}
-        </div>
-        <div className="admin-v2-modal-body">
-          {loadingPatients ? (
-            <div className="admin-v2-loading">Loading patients...</div>
-          ) : patients.length === 0 ? (
-            <div className="admin-v2-empty">No patients found</div>
-          ) : (
-            <div className="admin-v2-patient-selector-list">
-              {patients.filter(p => p.is_active).map(patient => (
-                <button
-                  key={patient.id}
-                  className={`admin-v2-patient-selector-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
-                  onClick={() => handleSelectPatient(patient)}
-                >
-                  <div className="admin-v2-patient-avatar">
-                    {patient.first_name?.[0]}{patient.last_name?.[0]}
-                  </div>
-                  <div className="admin-v2-patient-selector-info">
-                    <span className="admin-v2-patient-name">
-                      {patient.first_name} {patient.last_name}
-                    </span>
-                    <span className="admin-v2-patient-meta">
-                      {patient.room || 'No room assigned'}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
             {/* Patient Context Header */}
-            <div className="schedule-patient-header">
-              <div className="schedule-patient-info">
-                <div className="schedule-patient-avatar">
-                  {getInitials(selectedPatient.first_name, selectedPatient.last_name)}
-                </div>
-                <div className="schedule-patient-name-row">
-                  <h2>{selectedPatient.first_name} {selectedPatient.last_name}</h2>
-                  <button 
-                    className="schedule-edit-patient-btn"
-                    onClick={handleChangePatient}
-                    title="Change Patient"
-                  >
-                    <EditIcon size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
+            <PatientHeader 
+              patient={selectedPatient} 
+              onChangePatient={handleChangePatient} 
+            />
 
             {/* Section Title */}
             <h1 className="schedule-section-title">Care Task History</h1>
@@ -530,7 +459,15 @@ const AdminV2CareTasksHistory = () => {
         )}
 
         {/* Patient Modal */}
-        {showPatientModal && renderPatientModal()}
+        {showPatientModal && (
+          <PatientSelectorModal
+            patients={patients}
+            selectedPatient={selectedPatient}
+            onSelectPatient={handleSelectPatient}
+            onClose={() => setShowPatientModal(false)}
+            loading={loadingPatients}
+          />
+        )}
       </div>
     </AdminV2Layout>
   );
