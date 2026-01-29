@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientHeader, PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -26,7 +25,6 @@ const AdminV2EquipmentHistory = () => {
   
   // Use context patient as the source of truth
   const selectedPatient = contextPatient;
-  const [showPatientModal, setShowPatientModal] = useState(false);
   
   // Equipment list for filter dropdown
   const [equipment, setEquipment] = useState([]);
@@ -50,8 +48,6 @@ const AdminV2EquipmentHistory = () => {
       if (patient && patient.id !== contextPatient?.id) {
         setContextPatient(patient);
       }
-    } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
-      setShowPatientModal(true);
     }
   }, [searchParams, patients, loadingPatients]);
 
@@ -132,19 +128,6 @@ const AdminV2EquipmentHistory = () => {
     }
   };
 
-  const handleSelectPatient = (patient) => {
-    setContextPatient(patient);
-    setSearchParams({ patient: patient.id });
-    setShowPatientModal(false);
-    // Reset filters when patient changes
-    setEquipmentFilter('');
-    setHistory([]);
-  };
-
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
-  };
-
   const handleClearFilters = () => {
     setEquipmentFilter('');
     setStartDate('');
@@ -209,26 +192,8 @@ const AdminV2EquipmentHistory = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Patient Context Header */}
-            <PatientHeader 
-              patient={selectedPatient} 
-              onChangePatient={handleChangePatient} 
-            />
-
             {/* Page Header */}
-            <div className="admin-v2-page-header">
-              <div>
-                <h1>Equipment Change History</h1>
-                <p className="admin-v2-page-subtitle">View all equipment changes and replacements</p>
-              </div>
-              <button
-                className="admin-v2-btn admin-v2-btn-primary"
-                onClick={fetchHistory}
-                disabled={loading}
-              >
-                <RefreshIcon size={16} /> {loading ? 'Refreshing...' : 'Refresh'}
-              </button>
-            </div>
+            <h1 className="schedule-section-title">Equipment Change History</h1>
 
             {/* Filter Bar */}
             <div className="history-filter-bar">
@@ -373,28 +338,7 @@ const AdminV2EquipmentHistory = () => {
             )}
           </>
         ) : (
-          <div className="admin-v2-no-patient">
-            <EquipmentIcon size={48} />
-            <h2>Select a Patient</h2>
-            <p>Choose a patient to view their equipment change history</p>
-            <button 
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={() => setShowPatientModal(true)}
-            >
-              Select Patient
-            </button>
-          </div>
-        )}
-
-        {/* Patient Selector Modal */}
-        {showPatientModal && (
-          <PatientSelectorModal
-            patients={patients}
-            selectedPatient={selectedPatient}
-            onSelectPatient={handleSelectPatient}
-            onClose={() => setShowPatientModal(false)}
-            loading={loadingPatients}
-          />
+          <div className="admin-v2-loading">Select a patient from the sidebar</div>
         )}
       </div>
     </AdminV2Layout>

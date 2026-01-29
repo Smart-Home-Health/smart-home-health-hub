@@ -603,3 +603,252 @@ def get_next_scheduled_times(db: Session, schedule_id, count=5):
     except Exception as e:
         logger.error(f"Error getting next scheduled times for schedule {schedule_id}: {e}")
         return []
+
+
+# ===== Daily Schedule Functions =====
+
+from sqlalchemy import func, cast, Date
+from schemas.medication import Medication
+from schemas.medication_schedule import MedicationSchedule
+from schemas.medication_log import MedicationLog
+from schemas.nutrition_schedule import NutritionSchedule
+from schemas.nutrition_intake import NutritionIntake
+
+
+def get_scheduled_medications(db: Session, target_date, patient_id: int):
+    """
+    Get all medications scheduled for a specific date for a patient.
+    Only includes medications where start_date <= target_date (or no start_date).
+    Returns completion status by joining to medication_log.
+    """
+    try:
+        # Get all active medication schedules for this patient
+        schedules = db.query(MedicationSchedule).filter(
+            MedicationSchedule.active == True,
+            (MedicationSchedule.patient_id == patient_id) | (MedicationSchedule.patient_id == None)
+        ).join(Medication).filter(
+            Medication.active == True,
+            (Medication.patient_id == patient_id) | (Medication.patient_id == None),
+            # Only include if start_date is null or <= target_date
+            (Medication.start_date == None) | (Medication.start_date <= datetime.combine(target_date, datetime.max.time())),
+            # Exclude if end_date is set and < target_date
+            (Medication.end_date == None) | (Medication.end_date >= datetime.combine(target_date, datetime.min.time()))
+        ).all()
+        
+        # Get all medication logs for the target date for this patient
+        # Using scheduled_time date to match, which is more accurate than administered_at
+        med_logs = db.query(MedicationLog).filter(
+            MedicationLog.patient_id == patient_id,
+            MedicationLog.schedule_id.isnot(None),
+            cast(MedicationLog.scheduled_time, Date) == target_date
+        ).all()
+        
+        # Build a lookup dict: {(schedule_id, HH:MM): log}
+        log_lookup = {}
+        for log in med_logs:
+            if log.scheduled_time:
+                key = (log.schedule_id, log.scheduled_time.strftime('%H:%M'))
+                log_lookup[key] = log
+        
+        scheduled_meds = []
+        
+        for schedule in schedules:
+            try:
+                # Create datetime for start of target date
+                start_of_day = datetime.combine(target_date, datetime.min.time())
+                
+                # Initialize croniter with a time before the target date
+                base_time = start_of_day - timedelta(days=1)
+                cron = croniter(schedule.cron_expression, base_time)
+                
+                # Find all scheduled times for the target date
+                while True:
+                    next_time = cron.get_next(datetime)
+                    if next_time.date() > target_date:
+                        break
+                    if next_time.date() == target_date:
+                        # Check if completed
+                        key = (schedule.id, next_time.strftime('%H:%M'))
+                        log = log_lookup.get(key)
+                        
+                        scheduled_meds.append({
+                            'schedule_id': schedule.id,
+                            'medication_id': schedule.medication_id,
+                            'medication_name': schedule.medication.name,
+                            'dose_amount': schedule.dose_amount,
+                            'dose_unit': schedule.medication.quantity_unit,
+                            'scheduled_time': next_time,
+                            'description': schedule.description,
+                            'cron_expression': schedule.cron_expression,
+                            # Completion info
+                            'completed': log is not None,
+                            'completed_at': log.administered_at.isoformat() if log else None,
+                            'completed_by': log.administered_by if log else None
+                        })
+            except Exception as cron_error:
+                logger.error(f"Error processing cron expression {schedule.cron_expression}: {cron_error}")
+                continue
+        
+        return sorted(scheduled_meds, key=lambda x: x['scheduled_time'])
+        
+    except Exception as e:
+        logger.error(f"Error getting scheduled medications: {e}")
+        return []
+
+
+def get_scheduled_care_tasks(db: Session, target_date, patient_id: int):
+    """
+    Get all care tasks scheduled for a specific date for a patient.
+    Includes category information for nutrition detection.
+    Returns completion status by joining to care_task_log.
+    """
+    try:
+        # Get all active care task schedules for this patient
+        schedules = db.query(CareTaskSchedule).filter(
+            CareTaskSchedule.active == True,
+            (CareTaskSchedule.patient_id == patient_id) | (CareTaskSchedule.patient_id == None)
+        ).join(CareTask).filter(
+            CareTask.active == True,
+            (CareTask.patient_id == patient_id) | (CareTask.patient_id == None)
+        ).all()
+        
+        # Get all care task logs for the target date for this patient
+        task_logs = db.query(CareTaskLog).filter(
+            CareTaskLog.patient_id == patient_id,
+            CareTaskLog.schedule_id.isnot(None),
+            cast(CareTaskLog.scheduled_time, Date) == target_date
+        ).all()
+        
+        # Build a lookup dict: {(schedule_id, HH:MM): log}
+        log_lookup = {}
+        for log in task_logs:
+            if log.scheduled_time:
+                key = (log.schedule_id, log.scheduled_time.strftime('%H:%M'))
+                log_lookup[key] = log
+        
+        scheduled_tasks = []
+        
+        for schedule in schedules:
+            try:
+                # Create datetime for start of target date
+                start_of_day = datetime.combine(target_date, datetime.min.time())
+                
+                # Initialize croniter with a time before the target date
+                base_time = start_of_day - timedelta(days=1)
+                cron = croniter(schedule.cron_expression, base_time)
+                
+                # Get category info
+                category = schedule.care_task.category
+                
+                # Find all scheduled times for the target date
+                while True:
+                    next_time = cron.get_next(datetime)
+                    if next_time.date() > target_date:
+                        break
+                    if next_time.date() == target_date:
+                        # Check if completed
+                        key = (schedule.id, next_time.strftime('%H:%M'))
+                        log = log_lookup.get(key)
+                        
+                        scheduled_tasks.append({
+                            'schedule_id': schedule.id,
+                            'care_task_id': schedule.care_task_id,
+                            'care_task_name': schedule.care_task.name,
+                            'care_task_description': schedule.care_task.description,
+                            'scheduled_time': next_time,
+                            'schedule_description': schedule.description,
+                            'notes': schedule.notes,
+                            'category_id': category.id if category else None,
+                            'category_name': category.name if category else None,
+                            'category_color': category.color if category else None,
+                            # Completion info
+                            'completed': log is not None,
+                            'completed_at': log.completed_at.isoformat() if log else None,
+                            'completed_by': log.performed_by if log else None
+                        })
+            except Exception as cron_error:
+                logger.error(f"Error processing cron expression {schedule.cron_expression}: {cron_error}")
+                continue
+        
+        return sorted(scheduled_tasks, key=lambda x: x['scheduled_time'])
+        
+    except Exception as e:
+        logger.error(f"Error getting scheduled care tasks: {e}")
+        return []
+
+
+def get_scheduled_nutrition(db: Session, target_date, patient_id: int):
+    """
+    Get all nutrition items scheduled for a specific date for a patient.
+    Uses the nutrition_schedules table for meals, hydration, bathroom checks, etc.
+    Returns completion status by joining to nutrition_intake.
+    """
+    try:
+        # Get all active nutrition schedules for this patient
+        schedules = db.query(NutritionSchedule).filter(
+            NutritionSchedule.is_active == True,
+            NutritionSchedule.patient_id == patient_id
+        ).all()
+        
+        # Get all nutrition intake logs for the target date for this patient
+        nutrition_logs = db.query(NutritionIntake).filter(
+            NutritionIntake.patient_id == patient_id,
+            NutritionIntake.schedule_id.isnot(None),
+            cast(NutritionIntake.scheduled_time, Date) == target_date
+        ).all()
+        
+        # Build a lookup dict: {(schedule_id, HH:MM): log}
+        log_lookup = {}
+        for log in nutrition_logs:
+            if log.scheduled_time:
+                key = (log.schedule_id, log.scheduled_time.strftime('%H:%M'))
+                log_lookup[key] = log
+        
+        scheduled_nutrition = []
+        
+        for schedule in schedules:
+            try:
+                # Create datetime for start of target date
+                start_of_day = datetime.combine(target_date, datetime.min.time())
+                
+                # Initialize croniter with a time before the target date
+                base_time = start_of_day - timedelta(days=1)
+                cron = croniter(schedule.cron_expression, base_time)
+                
+                # Find all scheduled times for the target date
+                while True:
+                    next_time = cron.get_next(datetime)
+                    if next_time.date() > target_date:
+                        break
+                    if next_time.date() == target_date:
+                        # Check if completed
+                        key = (schedule.id, next_time.strftime('%H:%M'))
+                        log = log_lookup.get(key)
+                        
+                        scheduled_nutrition.append({
+                            'schedule_id': schedule.id,
+                            'name': schedule.name,
+                            'schedule_type': schedule.schedule_type,
+                            'default_item_name': schedule.default_item_name,
+                            'default_amount': schedule.default_amount,
+                            'default_amount_unit': schedule.default_amount_unit,
+                            'default_calories': schedule.default_calories,
+                            'scheduled_time': next_time,
+                            'instructions': schedule.instructions,
+                            'notes': schedule.notes,
+                            'cron_expression': schedule.cron_expression,
+                            # Completion info
+                            'completed': log is not None,
+                            'completed_at': log.consumed_at.isoformat() if log else None,
+                            'completed_by': log.recorded_by if log else None
+                        })
+            except Exception as cron_error:
+                logger.error(f"Error processing nutrition cron expression {schedule.cron_expression}: {cron_error}")
+                continue
+        
+        return sorted(scheduled_nutrition, key=lambda x: x['scheduled_time'])
+        
+    except Exception as e:
+        logger.error(f"Error getting scheduled nutrition: {e}")
+        return []
+

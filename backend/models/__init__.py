@@ -31,11 +31,15 @@ from schemas.patient import Patient
 from schemas.diagnosis import Diagnosis, DiagnosisNote
 from schemas.implant import Implant, ImplantNote
 
+# Schedule-related Pydantic models
+from models.schedule import CompleteItemRequest, BulkCompleteRequest
+
 __all__ = [
     'Business', 'Provider', 'NutritionIntake', 'CareTaskCategory', 'CareTask',
     'CareTaskSchedule', 'CareTaskLog', 'Medication', 'MedicationSchedule',
     'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
     'BloodPressure', 'Temperature', 'Vital', 'Symptom', 'Patient', 'User', 'Role',
-    'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'Implant', 'ImplantNote'
+    'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'Implant', 'ImplantNote',
+    'CompleteItemRequest', 'BulkCompleteRequest'
 ]

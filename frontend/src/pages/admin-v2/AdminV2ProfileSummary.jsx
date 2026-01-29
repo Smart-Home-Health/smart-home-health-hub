@@ -32,7 +32,6 @@ const vitalsData = dateLabels.map((date, i) => ({
 const nutritionIntakeData = dateLabels.map((date) => ({
   date,
   calories: -10 + Math.floor(Math.random() * 30), // -10% to +20%
-  protein: -15 + Math.floor(Math.random() * 35),
   fluids: -5 + Math.floor(Math.random() * 20),
 }));
 
@@ -332,7 +331,6 @@ const AdminV2ProfileSummary = () => {
                   <Legend />
                   <ReferenceLine y={0} stroke="#6b7280" strokeWidth={2} />
                   <Line type="monotone" dataKey="calories" stroke="#f59e0b" strokeWidth={2} dot={false} name="Calories" />
-                  <Line type="monotone" dataKey="protein" stroke="#ef4444" strokeWidth={2} dot={false} name="Protein" />
                   <Line type="monotone" dataKey="fluids" stroke="#3b82f6" strokeWidth={2} dot={false} name="Fluids" />
                 </LineChart>
               </ResponsiveContainer>

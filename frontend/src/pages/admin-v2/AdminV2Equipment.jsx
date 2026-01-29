@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientHeader, PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -29,7 +28,6 @@ const AdminV2Equipment = () => {
   
   // Use context patient as the source of truth
   const selectedPatient = contextPatient;
-  const [showPatientModal, setShowPatientModal] = useState(false);
   
   // Equipment state
   const [equipment, setEquipment] = useState([]);
@@ -74,8 +72,6 @@ const AdminV2Equipment = () => {
       if (patient && patient.id !== contextPatient?.id) {
         setContextPatient(patient);
       }
-    } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
-      setShowPatientModal(true);
     }
   }, [searchParams, patients, loadingPatients]);
 
@@ -114,16 +110,6 @@ const AdminV2Equipment = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSelectPatient = (patient) => {
-    setContextPatient(patient);
-    setSearchParams({ patient: patient.id });
-    setShowPatientModal(false);
-  };
-
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
   };
 
   const resetForm = () => {
@@ -375,12 +361,6 @@ const AdminV2Equipment = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Patient Context Header */}
-            <PatientHeader 
-              patient={selectedPatient} 
-              onChangePatient={handleChangePatient} 
-            />
-
             {/* Section Title */}
             <h1 className="schedule-section-title">Equipment Management</h1>
 
@@ -580,28 +560,7 @@ const AdminV2Equipment = () => {
             )}
           </>
         ) : (
-          <div className="admin-v2-no-patient">
-            <EquipmentIcon size={48} />
-            <h2>Select a Patient</h2>
-            <p>Choose a patient to view and manage their equipment</p>
-            <button 
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={() => setShowPatientModal(true)}
-            >
-              Select Patient
-            </button>
-          </div>
-        )}
-
-        {/* Patient Selector Modal */}
-        {showPatientModal && (
-          <PatientSelectorModal
-            patients={patients}
-            selectedPatient={selectedPatient}
-            onSelectPatient={handleSelectPatient}
-            onClose={() => setShowPatientModal(false)}
-            loading={loadingPatients}
-          />
+          <div className="admin-v2-loading">Select a patient from the sidebar</div>
         )}
 
         {/* Create Equipment Modal */}
