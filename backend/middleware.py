@@ -38,6 +38,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             "/api/auth/login",  # Login endpoint
             "/api/auth/verify-pin",  # PIN verification
             "/api/auth/users/available",  # Available users for login
+            "/api/auth/account/login",  # Account login (Layer 1)
             "/api/auth/session",  # Session check (can return 401)
             "/api/core/first-run",  # First run check (legacy)
             "/ws/",  # WebSocket connections
@@ -96,16 +97,24 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     }
                 )
             
+            # Extract account and auth level from token
+            account_id = payload.get("account_id")
+            auth_level = payload.get("auth_level", "full")  # "account" or "full"
+            
             # Add user context to request state AND scope (for BaseHTTPMiddleware compatibility)
             request.state.user_id = user_id
             request.state.username = username
             request.state.user_role = payload.get("role")
             request.state.is_authenticated = True
+            request.state.account_id = account_id
+            request.state.auth_level = auth_level
             
             # Also add to scope for persistence
             request.scope["user_id"] = user_id
             request.scope["username"] = username
             request.scope["user_role"] = payload.get("role")
+            request.scope["account_id"] = account_id
+            request.scope["auth_level"] = auth_level
             
             # Continue with request
             response = await call_next(request)

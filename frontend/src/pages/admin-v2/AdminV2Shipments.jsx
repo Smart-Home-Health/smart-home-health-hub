@@ -183,7 +183,7 @@ const AdminV2Shipments = () => {
         setShowCreateModal(false);
         resetForm();
         // Navigate to the new shipment detail page
-        navigate(`/admin-v2/equipment/shipments/${data.id}?patient=${selectedPatient.id}`);
+        navigate(`/care/equipment/shipments/${data.id}?patient=${selectedPatient.id}`);
       } else {
         const errorData = await response.json();
         setFormError(errorData.error || 'Failed to create shipment');
@@ -356,7 +356,7 @@ const AdminV2Shipments = () => {
                       <tr 
                         key={shipment.id}
                         className="admin-v2-clickable-row"
-                        onClick={() => navigate(`/admin-v2/equipment/shipments/${shipment.id}?patient=${selectedPatient.id}`)}
+                        onClick={() => navigate(`/care/equipment/shipments/${shipment.id}?patient=${selectedPatient.id}`)}
                       >
                         <td>
                           <strong>{shipment.order_number || shipment.po_number || `#${shipment.id}`}</strong>

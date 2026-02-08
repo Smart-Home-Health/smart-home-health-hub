@@ -6,6 +6,7 @@ from schemas import Base
 class CareTask(Base):
     __tablename__ = 'care_task'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this task belongs to
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=True)  # NULL = global task template
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)

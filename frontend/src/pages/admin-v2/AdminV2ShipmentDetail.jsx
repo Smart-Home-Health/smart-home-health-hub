@@ -332,7 +332,7 @@ const AdminV2ShipmentDetail = () => {
           <div className="admin-v2-error">{error || 'Shipment not found'}</div>
           <button 
             className="admin-v2-btn" 
-            onClick={() => navigate(`/admin-v2/equipment/shipments?patient=${selectedPatient?.id}`)}
+            onClick={() => navigate(`/care/equipment/shipments?patient=${selectedPatient?.id}`)}
           >
             <ChevronLeftIcon size={16} /> Back to Shipments
           </button>
@@ -352,7 +352,7 @@ const AdminV2ShipmentDetail = () => {
         <div className="admin-v2-page-header">
           <button 
             className="admin-v2-btn admin-v2-btn-ghost"
-            onClick={() => navigate(`/admin-v2/equipment/shipments?patient=${selectedPatient?.id}`)}
+            onClick={() => navigate(`/care/equipment/shipments?patient=${selectedPatient?.id}`)}
           >
             <ChevronLeftIcon size={16} /> Back
           </button>

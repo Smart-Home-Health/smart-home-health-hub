@@ -8,7 +8,7 @@ from typing import Optional, List
 import bcrypt
 import logging
 
-from models.users import User, Role, Permission, AuditLog, user_roles, role_permissions
+from models.users import User, Role, Permission, AuditLog, user_roles, role_permissions, Organization, OrganizationMembership, OrganizationType
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,9 @@ def create_user(
     pin: Optional[str] = None,
     is_system_admin: bool = False,
     is_active: bool = True,
-    role_ids: List[int] = None
+    role_ids: List[int] = None,
+    organization_id: Optional[int] = None,
+    auto_assign_default_org: bool = True
 ) -> User:
     """Create a new user with hashed password"""
     # Hash password
@@ -87,6 +89,28 @@ def create_user(
     if role_ids:
         for role_id in role_ids:
             assign_role_to_user(db, user.id, role_id)
+    
+    # Assign to organization
+    if organization_id:
+        # Assign to specified organization
+        membership = OrganizationMembership(
+            user_id=user.id,
+            organization_id=organization_id,
+            role="member",
+            is_admin=False
+        )
+        db.add(membership)
+    elif auto_assign_default_org:
+        # Auto-assign to default organization
+        default_org = db.query(Organization).filter(Organization.is_default == True).first()
+        if default_org:
+            membership = OrganizationMembership(
+                user_id=user.id,
+                organization_id=default_org.id,
+                role="member",
+                is_admin=is_system_admin  # System admins are org admins too
+            )
+            db.add(membership)
     
     db.commit()
     db.refresh(user)
@@ -489,3 +513,130 @@ def get_audit_logs(
         query = query.filter(AuditLog.timestamp <= end_date)
     
     return query.order_by(AuditLog.timestamp.desc()).limit(limit).all()
+
+
+# ==================== Organization Operations ====================
+
+def get_organization_by_id(db: Session, org_id: int) -> Optional[Organization]:
+    """Get organization by ID"""
+    return db.query(Organization).filter(Organization.id == org_id).first()
+
+
+def get_organization_by_slug(db: Session, slug: str) -> Optional[Organization]:
+    """Get organization by slug"""
+    return db.query(Organization).filter(Organization.slug == slug).first()
+
+
+def get_default_organization(db: Session) -> Optional[Organization]:
+    """Get the default organization (Smart Home Health)"""
+    return db.query(Organization).filter(Organization.is_default == True).first()
+
+
+def get_all_organizations(db: Session, include_inactive: bool = False) -> List[Organization]:
+    """Get all organizations"""
+    query = db.query(Organization)
+    if not include_inactive:
+        query = query.filter(Organization.is_active == True)
+    return query.all()
+
+
+def create_organization(
+    db: Session,
+    name: str,
+    slug: str,
+    org_type: OrganizationType = OrganizationType.OTHER,
+    is_default: bool = False,
+    settings: Optional[dict] = None,
+    contact_email: Optional[str] = None,
+    contact_phone: Optional[str] = None,
+    address: Optional[str] = None
+) -> Organization:
+    """Create a new organization"""
+    org = Organization(
+        name=name,
+        slug=slug,
+        org_type=org_type,
+        is_default=is_default,
+        settings=settings,
+        contact_email=contact_email,
+        contact_phone=contact_phone,
+        address=address
+    )
+    
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    
+    logger.info(f"Created organization: {name}")
+    return org
+
+
+def add_user_to_organization(
+    db: Session,
+    user_id: int,
+    organization_id: int,
+    role: str = "member",
+    is_admin: bool = False,
+    invited_by_user_id: Optional[int] = None
+) -> OrganizationMembership:
+    """Add a user to an organization"""
+    membership = OrganizationMembership(
+        user_id=user_id,
+        organization_id=organization_id,
+        role=role,
+        is_admin=is_admin,
+        invited_by_user_id=invited_by_user_id
+    )
+    
+    db.add(membership)
+    db.commit()
+    db.refresh(membership)
+    
+    logger.info(f"Added user {user_id} to organization {organization_id}")
+    return membership
+
+
+def remove_user_from_organization(db: Session, user_id: int, organization_id: int) -> bool:
+    """Remove a user from an organization (soft delete)"""
+    membership = db.query(OrganizationMembership).filter(
+        OrganizationMembership.user_id == user_id,
+        OrganizationMembership.organization_id == organization_id
+    ).first()
+    
+    if membership:
+        membership.is_active = False
+        db.commit()
+        logger.info(f"Removed user {user_id} from organization {organization_id}")
+        return True
+    return False
+
+
+def get_user_organizations(db: Session, user_id: int) -> List[Organization]:
+    """Get all organizations a user is a member of"""
+    memberships = db.query(OrganizationMembership).filter(
+        OrganizationMembership.user_id == user_id,
+        OrganizationMembership.is_active == True
+    ).all()
+    
+    return [m.organization for m in memberships]
+
+
+def get_organization_members(db: Session, organization_id: int) -> List[User]:
+    """Get all members of an organization"""
+    memberships = db.query(OrganizationMembership).filter(
+        OrganizationMembership.organization_id == organization_id,
+        OrganizationMembership.is_active == True
+    ).all()
+    
+    return [m.user for m in memberships]
+
+
+def is_user_org_admin(db: Session, user_id: int, organization_id: int) -> bool:
+    """Check if a user is an admin of an organization"""
+    membership = db.query(OrganizationMembership).filter(
+        OrganizationMembership.user_id == user_id,
+        OrganizationMembership.organization_id == organization_id,
+        OrganizationMembership.is_active == True
+    ).first()
+    
+    return membership.is_admin if membership else False

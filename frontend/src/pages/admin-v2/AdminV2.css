@@ -379,6 +379,11 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .admin-v2-back-link svg {
@@ -387,6 +392,10 @@
 
 .admin-v2-back-link:hover {
   color: #58a6ff;
+}
+
+.admin-v2-logout-link:hover {
+  color: #f85149;
 }
 
 /* Main Content Area */

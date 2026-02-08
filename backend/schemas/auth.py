@@ -2,8 +2,50 @@
 Pydantic schemas for authentication
 """
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+
+
+class AccountLoginRequest(BaseModel):
+    """Account login request (Layer 1)"""
+    slug: str = Field(..., description="Account username/slug")
+    password: str
+
+
+class AccountLoginResponse(BaseModel):
+    """Account login response - returns account-level token"""
+    access_token: str
+    token_type: str = "bearer"
+    auth_level: str = "account"
+    account: dict
+    message: str = "Account authenticated. Please select a user profile."
+
+
+class UserSelectRequest(BaseModel):
+    """User selection request (Layer 2) - after account login"""
+    user_id: int
+    pin: Optional[str] = Field(None, min_length=4, max_length=8, description="PIN for quick auth")
+    password: Optional[str] = Field(None, description="Full password (required once daily)")
+
+
+class UserSelectResponse(BaseModel):
+    """User selection response - returns full auth token"""
+    access_token: str
+    token_type: str = "bearer"
+    auth_level: str = "full"
+    account: dict
+    user: dict
+    requires_full_password: bool = False
+
+
+class AccountUserItem(BaseModel):
+    """User item for account user list"""
+    id: int
+    username: str
+    full_name: str
+    has_pin: bool
+    requires_full_password: bool
+    roles: List[dict] = []
 
 
 class LoginRequest(BaseModel):
@@ -28,11 +70,13 @@ class TokenResponse(BaseModel):
 
 class SessionInfo(BaseModel):
     """Current session information"""
-    user_id: int
-    username: str
-    full_name: str
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+    full_name: Optional[str] = None
+    account_id: Optional[int] = None
+    auth_level: Optional[str] = None  # "account" | "full" | None
     is_authenticated: bool
-    requires_full_password: bool
+    requires_full_password: bool = False
     last_activity: Optional[datetime] = None
     last_full_password_login: Optional[datetime] = None
     roles: list[str] = []

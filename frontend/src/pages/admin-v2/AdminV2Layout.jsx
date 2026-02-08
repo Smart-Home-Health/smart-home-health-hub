@@ -28,84 +28,85 @@ import './AdminV2.css';
 
 // Side navigation items - main app sections
 const sideNavItems = [
-  { path: '/admin-v2', label: 'Dashboard', Icon: DashboardIcon },
-  { path: '/admin-v2/schedule', label: 'Schedule', Icon: CalendarIcon, requiredPermissions: ['medications.view', 'care_tasks.view'] },
-  { path: '/admin-v2/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.view', 'vitals.create'] },
-  { path: '/admin-v2/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.view', 'vitals.create'] },
-  { path: '/admin-v2/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.view', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
-  { path: '/admin-v2/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.view', 'medications.create', 'medications.update', 'medications.delete'] },
-  { path: '/admin-v2/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.view', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
-  { path: '/admin-v2/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.view', 'equipment.create', 'equipment.update', 'equipment.delete'] },
-  { path: '/admin-v2/nutrition', label: 'Nutrition', Icon: NutritionIcon, requiredPermissions: ['nutrition.view', 'nutrition.create', 'nutrition.update', 'nutrition.delete'] },
-  { path: '/admin-v2/profile', label: 'Profile', Icon: ProfileIcon },
-  { path: '/admin-v2/configuration', label: 'Configuration', Icon: ConfigIcon },
+  { path: '/care', label: 'Dashboard', Icon: DashboardIcon },
+  { path: '/care/schedule', label: 'Schedule', Icon: CalendarIcon, requiredPermissions: ['medications.view', 'care_tasks.view'] },
+  { path: '/care/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.view', 'vitals.create'] },
+  { path: '/care/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.view', 'vitals.create'] },
+  { path: '/care/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.view', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
+  { path: '/care/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.view', 'medications.create', 'medications.update', 'medications.delete'] },
+  { path: '/care/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.view', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
+  { path: '/care/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.view', 'equipment.create', 'equipment.update', 'equipment.delete'] },
+  { path: '/care/nutrition', label: 'Nutrition', Icon: NutritionIcon, requiredPermissions: ['nutrition.view', 'nutrition.create', 'nutrition.update', 'nutrition.delete'] },
+  { path: '/care/profile', label: 'Profile', Icon: ProfileIcon },
+  { path: '/care/configuration', label: 'Configuration', Icon: ConfigIcon },
 ];
 
 // Get top nav items based on current section and user permissions
 const getTopNavItems = (section, hasAnyPermission) => {
   const navItems = {
     vitals: [
-      { path: '/admin-v2/vitals', label: 'Record' },
-      { path: '/admin-v2/vitals/history', label: 'History' },
+      { path: '/care/vitals', label: 'Record' },
+      { path: '/care/vitals/history', label: 'History' },
     ],
     symptoms: [
-      { path: '/admin-v2/symptoms', label: 'Log' },
-      { path: '/admin-v2/symptoms/active', label: 'Active' },
-      { path: '/admin-v2/symptoms/history', label: 'History' },
+      { path: '/care/symptoms', label: 'Log' },
+      { path: '/care/symptoms/active', label: 'Active' },
+      { path: '/care/symptoms/history', label: 'History' },
     ],
     medications: [
-      { path: '/admin-v2/medications', label: 'Overview' },
-      { path: '/admin-v2/medications/schedule', label: 'Schedule' },
-      { path: '/admin-v2/medications/history', label: 'History' },
+      { path: '/care/medications', label: 'Overview' },
+      { path: '/care/medications/schedule', label: 'Schedule' },
+      { path: '/care/medications/history', label: 'History' },
     ],
     'care-tasks': [
-      { path: '/admin-v2/care-tasks', label: 'Overview' },
-      { path: '/admin-v2/care-tasks/schedule', label: 'Schedule' },
-      { path: '/admin-v2/care-tasks/history', label: 'History' },
+      { path: '/care/care-tasks', label: 'Overview' },
+      { path: '/care/care-tasks/schedule', label: 'Schedule' },
+      { path: '/care/care-tasks/history', label: 'History' },
     ],
     equipment: [
-      { path: '/admin-v2/equipment', label: 'Overview' },
-      { path: '/admin-v2/equipment/history', label: 'Change History' },
-      { path: '/admin-v2/equipment/shipments', label: 'Shipments' },
-      { path: '/admin-v2/equipment/alerts', label: 'Alerts' },
+      { path: '/care/equipment', label: 'Overview' },
+      { path: '/care/equipment/history', label: 'Change History' },
+      { path: '/care/equipment/shipments', label: 'Shipments' },
+      { path: '/care/equipment/alerts', label: 'Alerts' },
     ],
     nutrition: [
-      { path: '/admin-v2/nutrition', label: 'Intake Log' },
-      { path: '/admin-v2/nutrition/output', label: 'Output Log' },
-      { path: '/admin-v2/nutrition/schedules', label: 'Schedules' },
-      { path: '/admin-v2/nutrition/goals', label: 'Daily Goals' },
+      { path: '/care/nutrition', label: 'Intake Log' },
+      { path: '/care/nutrition/output', label: 'Output Log' },
+      { path: '/care/nutrition/schedules', label: 'Schedules' },
+      { path: '/care/nutrition/goals', label: 'Daily Goals' },
     ],
     monitoring: [
-      { path: '/admin-v2/monitoring', label: 'Alerts' },
-      { path: '/admin-v2/monitoring/history', label: 'History' },
-      { path: '/admin-v2/monitoring/settings', label: 'Alert Settings' },
+      { path: '/care/monitoring', label: 'Alerts' },
+      { path: '/care/monitoring/history', label: 'History' },
+      { path: '/care/monitoring/settings', label: 'Alert Settings' },
     ],
     profile: [
       // Patient profile sections
-      { path: '/admin-v2/profile', label: 'Summary' },
+      { path: '/care/profile', label: 'Summary' },
       ...(hasAnyPermission(['providers.view', 'providers.create', 'providers.update', 'providers.delete']) 
-        ? [{ path: '/admin-v2/profile/providers', label: 'Providers' }] : []),
+        ? [{ path: '/care/profile/providers', label: 'Providers' }] : []),
       ...(hasAnyPermission(['providers.view', 'providers.create', 'providers.update', 'providers.delete', 'diagnoses.view', 'diagnoses.create', 'diagnoses.update', 'diagnoses.delete']) 
-        ? [{ path: '/admin-v2/profile/diagnoses', label: 'Diagnoses' }] : []),
+        ? [{ path: '/care/profile/diagnoses', label: 'Diagnoses' }] : []),
       ...(hasAnyPermission(['providers.view', 'providers.create', 'providers.update', 'providers.delete', 'implants.view', 'implants.create', 'implants.update', 'implants.delete']) 
-        ? [{ path: '/admin-v2/profile/implants', label: 'Implants' }] : []),
+        ? [{ path: '/care/profile/implants', label: 'Implants' }] : []),
       ...(hasAnyPermission(['businesses.view', 'businesses.create', 'businesses.update', 'businesses.delete']) 
-        ? [{ path: '/admin-v2/profile/businesses', label: 'Businesses' }] : []),
+        ? [{ path: '/care/profile/businesses', label: 'Businesses' }] : []),
     ],
     configuration: [
       // System-wide configuration
-      { path: '/admin-v2/configuration', label: 'General' },
+      { path: '/care/configuration', label: 'General' },
+      { path: '/care/configuration/account', label: 'Account' },
       ...(hasAnyPermission(['patients.view', 'patients.create', 'patients.update', 'patients.delete']) 
-        ? [{ path: '/admin-v2/configuration/patients', label: 'Patients' }] : []),
+        ? [{ path: '/care/configuration/patients', label: 'Patients' }] : []),
       ...(hasAnyPermission(['users.view', 'users.create', 'users.update', 'users.delete']) 
-        ? [{ path: '/admin-v2/configuration/users', label: 'Users' }] : []),
+        ? [{ path: '/care/configuration/users', label: 'Users' }] : []),
       ...(hasAnyPermission(['roles.view', 'roles.create', 'roles.update', 'roles.delete', 'users.view']) 
-        ? [{ path: '/admin-v2/configuration/users/roles', label: 'Roles' }] : []),
+        ? [{ path: '/care/configuration/users/roles', label: 'Roles' }] : []),
       ...(hasAnyPermission(['roles.view', 'roles.create', 'roles.update', 'roles.delete', 'users.view']) 
-        ? [{ path: '/admin-v2/configuration/users/permissions', label: 'Permissions' }] : []),
-      { path: '/admin-v2/configuration/mqtt', label: 'MQTT' },
-      { path: '/admin-v2/configuration/serial', label: 'Serial' },
-      { path: '/admin-v2/configuration/alarms', label: 'Alarms' },
+        ? [{ path: '/care/configuration/users/permissions', label: 'Permissions' }] : []),
+      { path: '/care/configuration/mqtt', label: 'MQTT' },
+      { path: '/care/configuration/serial', label: 'Serial' },
+      { path: '/care/configuration/alarms', label: 'Alarms' },
     ],
   };
   return navItems[section] || [];
@@ -115,7 +116,7 @@ const getTopNavItems = (section, hasAnyPermission) => {
 const getCurrentSection = (pathname) => {
   const parts = pathname.split('/');
   if (parts.length >= 3) {
-    return parts[2]; // e.g., 'medications' from '/admin-v2/medications/schedule'
+    return parts[2]; // e.g., 'medications' from '/care/medications/schedule'
   }
   return null;
 };
@@ -124,7 +125,7 @@ const AdminV2Layout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, logout, switchUser } = useAuth();
   const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -180,7 +181,7 @@ const AdminV2Layout = ({ children }) => {
     setShowPatientDropdown(false);
     
     // Update URL param if we're on a page that uses patient param
-    const patientPages = ['/admin-v2/medications', '/admin-v2/care-tasks', '/admin-v2/equipment', '/admin-v2/nutrition', '/admin-v2/schedule', '/admin-v2/providers'];
+    const patientPages = ['/care/medications', '/care/care-tasks', '/care/equipment', '/care/nutrition', '/care/schedule', '/care/providers'];
     const isPatientPage = patientPages.some(p => location.pathname.startsWith(p));
     if (isPatientPage && patient) {
       navigate(`${location.pathname}?patient=${patient.id}`);
@@ -193,13 +194,25 @@ const AdminV2Layout = ({ children }) => {
     if (user.is_system_admin) return true;
     return permissions.some(p => user.permissions?.includes(p));
   };
+
+  // Handle switch user - go back to user selection
+  const handleSwitchUser = async () => {
+    await switchUser();
+    navigate('/select-user');
+  };
+
+  // Handle full logout
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
   
   const topNavItems = getTopNavItems(currentSection, hasAnyPermission);
   
   // Get URL with preserved query params for certain sections
   const getNavUrl = (path) => {
     // For medications, care-tasks, and equipment sections, preserve patient param
-    if (path.startsWith('/admin-v2/medications') || path.startsWith('/admin-v2/care-tasks') || path.startsWith('/admin-v2/equipment')) {
+    if (path.startsWith('/care/medications') || path.startsWith('/care/care-tasks') || path.startsWith('/care/equipment')) {
       const patientId = searchParams.get('patient');
       if (patientId) {
         return `${path}?patient=${patientId}`;
@@ -209,8 +222,8 @@ const AdminV2Layout = ({ children }) => {
   };
   
   const isActiveLink = (path) => {
-    if (path === '/admin-v2') {
-      return location.pathname === '/admin-v2';
+    if (path === '/care') {
+      return location.pathname === '/care';
     }
     return location.pathname.startsWith(path);
   };
@@ -361,18 +374,26 @@ const AdminV2Layout = ({ children }) => {
         <div className="admin-v2-sidebar-footer">
           {!sidebarCollapsed && (
             <>
-              <Link to="/admin" className="admin-v2-back-link">
-                <BackArrowIcon size={14} /> Legacy Admin
-              </Link>
               <Link to="/" className="admin-v2-back-link">
                 <BackArrowIcon size={14} /> Touch Dashboard
               </Link>
+              <button onClick={handleSwitchUser} className="admin-v2-back-link">
+                <UsersIcon size={14} /> Switch User
+              </button>
+              <button onClick={handleLogout} className="admin-v2-back-link admin-v2-logout-link">
+                <BackArrowIcon size={14} /> Log Out
+              </button>
             </>
           )}
           {sidebarCollapsed && (
-            <Link to="/" className="admin-v2-back-link" title="Touch Dashboard">
-              <BackArrowIcon size={14} />
-            </Link>
+            <>
+              <Link to="/" className="admin-v2-back-link" title="Touch Dashboard">
+                <BackArrowIcon size={14} />
+              </Link>
+              <button onClick={handleLogout} className="admin-v2-back-link" title="Log Out">
+                <BackArrowIcon size={14} />
+              </button>
+            </>
           )}
         </div>
       </aside>

@@ -13,7 +13,8 @@ import logging
 from db import get_db
 from schemas.auth import (
     LoginRequest, PinVerifyRequest, TokenResponse, SessionInfo,
-    FirstRunSetup, FirstRunStatus
+    FirstRunSetup, FirstRunStatus,
+    AccountLoginRequest, AccountLoginResponse, UserSelectRequest, UserSelectResponse, AccountUserItem
 )
 from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem
 from crud.users import (
@@ -25,8 +26,9 @@ from crud.users import (
     get_all_roles, assign_role_to_user as add_role_to_user,
     remove_role_from_user
 )
-from dependencies import get_current_user, require_permission
-from models.users import User
+from dependencies import get_current_user, require_permission, get_current_account_id, get_current_account, require_full_auth
+from models.users import User, Account
+import bcrypt
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +39,30 @@ ALGORITHM = "HS256"
 SESSION_TIMEOUT_MINUTES = 30
 
 
-def create_access_token(user: User, is_full_password: bool = False) -> str:
-    """Create JWT access token for user"""
+def create_access_token(
+    user: User = None, 
+    account: Account = None,
+    is_full_password: bool = False,
+    auth_level: str = "full"
+) -> str:
+    """
+    Create JWT access token.
+    
+    For account-level auth (auth_level="account"):
+        - Only account_id is required
+        - user_id will be None
+        
+    For full auth (auth_level="full"):
+        - Both account_id and user_id are included
+    """
     expire = datetime.utcnow() + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
     
     payload = {
-        "user_id": user.id,
-        "username": user.username,
-        "role": user.roles[0].name if user.roles else None,
+        "account_id": account.id if account else (user.account_id if user else None),
+        "user_id": user.id if user and auth_level == "full" else None,
+        "username": user.username if user else None,
+        "role": user.roles[0].name if user and user.roles else None,
+        "auth_level": auth_level,
         "exp": expire,
         "is_full_password": is_full_password
     }
@@ -163,6 +181,273 @@ def first_run_setup(
     )
 
 
+# ==================================
+# ACCOUNT AUTHENTICATION (Layer 1)
+# ==================================
+
+@router.post("/account/login", response_model=AccountLoginResponse)
+def account_login(
+    credentials: AccountLoginRequest,
+    response: Response,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Account login (Layer 1 of two-layer auth).
+    
+    Authenticates the account and returns an account-level token.
+    User must then select a user profile to get full access.
+    """
+    # Find account by slug
+    account = db.query(Account).filter(Account.slug == credentials.slug).first()
+    
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid account credentials"
+        )
+    
+    if not account.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive"
+        )
+    
+    # Verify password
+    if not bcrypt.checkpw(credentials.password.encode('utf-8'), account.password_hash.encode('utf-8')):
+        create_audit_log(
+            db,
+            user_id=None,
+            action="account.login.failed",
+            details=json.dumps({"account_slug": credentials.slug, "reason": "invalid_password"}),
+            ip_address=get_client_ip(request),
+            user_agent=request.headers.get("User-Agent")
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid account credentials"
+        )
+    
+    # Create account-level token
+    token = create_access_token(account=account, auth_level="account")
+    
+    # Set httpOnly cookie
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        httponly=True,
+        max_age=SESSION_TIMEOUT_MINUTES * 60,
+        samesite="none",
+        secure=False  # Set to True in production with HTTPS
+    )
+    
+    # Create audit log
+    create_audit_log(
+        db,
+        user_id=None,
+        action="account.login.success",
+        details=json.dumps({"account_id": account.id, "account_name": account.name}),
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("User-Agent")
+    )
+    
+    logger.info(f"Account logged in: {account.name} ({account.slug})")
+    
+    return AccountLoginResponse(
+        access_token=token,
+        account={
+            "id": account.id,
+            "name": account.name,
+            "slug": account.slug
+        }
+    )
+
+
+@router.get("/account/users", response_model=List[AccountUserItem])
+def get_account_users(
+    request: Request,
+    db: Session = Depends(get_db),
+    account_id: int = Depends(get_current_account_id)
+):
+    """
+    Get list of users belonging to the current account.
+    
+    Requires account-level authentication (available after account login).
+    Used to display user profiles for selection.
+    """
+    users = db.query(User).filter(
+        User.account_id == account_id,
+        User.is_active == True
+    ).all()
+    
+    return [
+        AccountUserItem(
+            id=user.id,
+            username=user.username,
+            full_name=user.full_name,
+            has_pin=bool(user.pin_hash),
+            requires_full_password=user.needs_full_password(),
+            roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles]
+        )
+        for user in users
+    ]
+
+
+@router.post("/user/select", response_model=UserSelectResponse)
+def select_user(
+    selection: UserSelectRequest,
+    response: Response,
+    request: Request,
+    db: Session = Depends(get_db),
+    account_id: int = Depends(get_current_account_id)
+):
+    """
+    Select a user profile (Layer 2 of two-layer auth).
+    
+    After account login, user selects their profile and authenticates with PIN or password.
+    Returns full auth token with both account and user context.
+    """
+    # Get user
+    user = get_user_by_id(db, selection.user_id)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Verify user belongs to the authenticated account
+    if user.account_id != account_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not belong to this account"
+        )
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive"
+        )
+    
+    # Check if account is locked
+    if is_user_locked(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account temporarily locked. Try again later."
+        )
+    
+    is_full_password = False
+    
+    # Determine auth method
+    if selection.password:
+        # Full password authentication
+        if not verify_password(user, selection.password):
+            increment_failed_login(db, user.id)
+            create_audit_log(
+                db,
+                user_id=user.id,
+                action="user.select.failed",
+                details=json.dumps({"reason": "invalid_password"}),
+                ip_address=get_client_ip(request),
+                user_agent=request.headers.get("User-Agent")
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials"
+            )
+        is_full_password = True
+        update_login_timestamp(db, user.id, is_full_password=True)
+        
+    elif selection.pin:
+        # PIN authentication - only if password was entered in last 24h
+        if user.needs_full_password():
+            return UserSelectResponse(
+                access_token="",
+                auth_level="account",  # Stay at account level
+                account={"id": account_id, "name": "", "slug": ""},
+                user={
+                    "id": user.id,
+                    "username": user.username,
+                    "full_name": user.full_name
+                },
+                requires_full_password=True
+            )
+        
+        if not verify_pin(user, selection.pin):
+            increment_failed_login(db, user.id)
+            create_audit_log(
+                db,
+                user_id=user.id,
+                action="user.select.failed",
+                details=json.dumps({"reason": "invalid_pin"}),
+                ip_address=get_client_ip(request),
+                user_agent=request.headers.get("User-Agent")
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid PIN"
+            )
+        update_login_timestamp(db, user.id, is_full_password=False)
+        
+    else:
+        # No credentials provided
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PIN or password required"
+        )
+    
+    # Get account for response
+    account = db.query(Account).filter(Account.id == account_id).first()
+    
+    # Create full auth token
+    token = create_access_token(user=user, account=account, is_full_password=is_full_password, auth_level="full")
+    
+    # Set httpOnly cookie
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        httponly=True,
+        max_age=SESSION_TIMEOUT_MINUTES * 60,
+        samesite="none",
+        secure=False  # Set to True in production with HTTPS
+    )
+    
+    # Create audit log
+    create_audit_log(
+        db,
+        user_id=user.id,
+        action="user.select.success",
+        details=json.dumps({"method": "password" if is_full_password else "pin"}),
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("User-Agent")
+    )
+    
+    logger.info(f"User selected: {user.username} in account {account.name}")
+    
+    return UserSelectResponse(
+        access_token=token,
+        account={
+            "id": account.id,
+            "name": account.name,
+            "slug": account.slug
+        },
+        user={
+            "id": user.id,
+            "username": user.username,
+            "full_name": user.full_name,
+            "is_system_admin": user.is_system_admin,
+            "has_pin": bool(user.pin_hash),
+            "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
+            "permissions": [p.name for r in user.roles for p in r.permissions]
+        },
+        requires_full_password=False
+    )
+
+
+# ==================================
+# LEGACY USER AUTHENTICATION
+# ==================================
+
 @router.get("/users/available", response_model=List[dict])
 def get_available_users(db: Session = Depends(get_db)):
     """
@@ -230,8 +515,11 @@ def login(
         user_agent=request.headers.get("User-Agent")
     )
     
-    # Generate token
-    token = create_access_token(user, is_full_password=True)
+    # Get user's account for token
+    account = db.query(Account).filter(Account.id == user.account_id).first() if user.account_id else None
+    
+    # Generate token (with account context for new two-layer system)
+    token = create_access_token(user=user, account=account, is_full_password=True, auth_level="full")
     
     # Set httpOnly cookie
     # Note: samesite="none" requires secure=True in production
@@ -255,6 +543,7 @@ def login(
             "full_name": user.full_name,
             "is_system_admin": user.is_system_admin,
             "has_pin": bool(user.pin_hash),
+            "account_id": user.account_id,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
             "permissions": [p.name for r in user.roles for p in r.permissions]
         },
@@ -336,8 +625,11 @@ def verify_user_pin(
         user_agent=request.headers.get("User-Agent")
     )
     
-    # Generate token
-    token = create_access_token(user, is_full_password=False)
+    # Get user's account for token
+    account = db.query(Account).filter(Account.id == user.account_id).first() if user.account_id else None
+    
+    # Generate token (with account context)
+    token = create_access_token(user=user, account=account, is_full_password=False, auth_level="full")
     
     # Set httpOnly cookie
     # Note: samesite="none" requires secure=True in production
@@ -361,6 +653,7 @@ def verify_user_pin(
             "full_name": user.full_name,
             "is_system_admin": user.is_system_admin,
             "has_pin": bool(user.pin_hash),
+            "account_id": user.account_id,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
             "permissions": [p.name for r in user.roles for p in r.permissions]
         },
@@ -390,13 +683,65 @@ def logout(response: Response, current_user: User = Depends(get_current_user), d
 
 @router.get("/session", response_model=SessionInfo)
 def get_session(
-    current_user: User = Depends(get_current_user),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Get current session information.
     Used by frontend to check authentication status and permissions.
+    
+    Returns info based on auth level:
+    - No auth: is_authenticated=False
+    - Account-only: account_id, auth_level="account"
+    - Full: account_id, user info, auth_level="full"
     """
+    # Since /session is a public route, middleware doesn't run
+    # We need to parse the token ourselves
+    token = request.cookies.get("session_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    
+    # No token - not authenticated
+    if not token:
+        return SessionInfo(is_authenticated=False)
+    
+    # Parse the token
+    try:
+        import jwt
+        import os
+        SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret-key-in-production")
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        
+        account_id = payload.get("account_id")
+        user_id = payload.get("user_id")
+        auth_level = payload.get("auth_level")
+        
+    except jwt.InvalidTokenError:
+        return SessionInfo(is_authenticated=False)
+    
+    # No account - not authenticated
+    if not account_id:
+        return SessionInfo(is_authenticated=False)
+    
+    # Account-only auth (no user selected yet)
+    if auth_level == "account" or not user_id:
+        return SessionInfo(
+            account_id=account_id,
+            auth_level="account",
+            is_authenticated=False  # Not fully authenticated until user is selected
+        )
+    
+    # Full auth - get user details
+    current_user = get_user_by_id(db, user_id)
+    if not current_user:
+        return SessionInfo(
+            account_id=account_id,
+            auth_level="account",
+            is_authenticated=False
+        )
+    
     # Update activity timestamp
     update_activity_timestamp(db, current_user.id)
     
@@ -415,6 +760,8 @@ def get_session(
         user_id=current_user.id,
         username=current_user.username,
         full_name=current_user.full_name,
+        account_id=account_id,
+        auth_level="full",
         is_authenticated=True,
         requires_full_password=current_user.needs_full_password(),
         last_activity=current_user.last_activity,

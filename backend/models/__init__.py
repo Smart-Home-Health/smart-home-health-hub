@@ -3,7 +3,7 @@ Pydantic models for API request/response validation
 """
 
 # Import User model first since other schemas reference it
-from models.users import User, Role, Permission, AuditLog
+from models.users import User, Role, Permission, AuditLog, Organization, OrganizationMembership, OrganizationType, Account
 
 # Re-export SQLAlchemy models from schemas for backward compatibility
 from schemas.business import Business, BusinessTypeAssignment
@@ -27,7 +27,7 @@ from schemas.blood_pressure import BloodPressure
 from schemas.temperature import Temperature
 from schemas.vital import Vital
 from schemas.symptom import Symptom
-from schemas.patient import Patient
+from schemas.patient import Patient, PatientAccess, AccessLevel
 from schemas.diagnosis import Diagnosis, DiagnosisNote
 from schemas.implant import Implant, ImplantNote
 
@@ -41,5 +41,6 @@ __all__ = [
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
     'BloodPressure', 'Temperature', 'Vital', 'Symptom', 'Patient', 'User', 'Role',
     'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'Implant', 'ImplantNote',
-    'CompleteItemRequest', 'BulkCompleteRequest'
+    'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
+    'OrganizationType', 'PatientAccess', 'AccessLevel'
 ]

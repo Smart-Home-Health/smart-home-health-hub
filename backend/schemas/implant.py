@@ -12,6 +12,7 @@ class Implant(Base):
     __tablename__ = 'implants'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this implant belongs to
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
     
     # Core implant info

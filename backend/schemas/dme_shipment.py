@@ -12,6 +12,7 @@ class DMEShipment(Base):
     """
     __tablename__ = 'dme_shipments'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this shipment belongs to
     
     # Supplier and patient links
     supplier_id = Column(Integer, ForeignKey('businesses.id'), nullable=True)  # DME provider

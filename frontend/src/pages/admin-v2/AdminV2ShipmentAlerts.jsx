@@ -175,7 +175,7 @@ const AdminV2ShipmentAlerts = () => {
         setShowFollowUpModal(false);
         
         // Navigate to the new shipment
-        navigate(`/admin-v2/equipment/shipments/${result.shipment_id}?patient=${selectedPatient.id}`);
+        navigate(`/care/equipment/shipments/${result.shipment_id}?patient=${selectedPatient.id}`);
       } else {
         const errData = await response.json();
         alert(errData.error || 'Failed to create follow-up order');
@@ -366,7 +366,7 @@ const AdminV2ShipmentAlerts = () => {
                             href="#" 
                             onClick={(e) => {
                               e.preventDefault();
-                              navigate(`/admin-v2/equipment/shipments/${alert.shipment_id}?patient=${selectedPatient.id}`);
+                              navigate(`/care/equipment/shipments/${alert.shipment_id}?patient=${selectedPatient.id}`);
                             }}
                           >
                             #{alert.shipment_id}

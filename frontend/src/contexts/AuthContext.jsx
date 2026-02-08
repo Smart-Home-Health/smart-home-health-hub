@@ -12,7 +12,11 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  // Two-layer auth state
+  const [account, setAccount] = useState(null);  // Layer 1: Account
+  const [user, setUser] = useState(null);         // Layer 2: User
+  const [authLevel, setAuthLevel] = useState(null); // "account" | "full" | null
+  
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -43,29 +47,154 @@ export const AuthProvider = ({ children }) => {
 
       if (sessionRes.ok) {
         const sessionData = await sessionRes.json();
-        // Extract user info from session
-        setUser({
-          id: sessionData.user_id,
-          username: sessionData.username,
-          full_name: sessionData.full_name,
-          roles: sessionData.roles || [],
-          permissions: sessionData.permissions || []
-        });
-        setShowAuthModal(false);
+        
+        // Determine auth level from session
+        if (sessionData.user_id) {
+          // Full auth - both account and user
+          setUser({
+            id: sessionData.user_id,
+            username: sessionData.username,
+            full_name: sessionData.full_name,
+            roles: sessionData.roles || [],
+            permissions: sessionData.permissions || []
+          });
+          
+          // Get account info if available
+          if (sessionData.account_id) {
+            setAccount({ id: sessionData.account_id });
+          }
+          
+          setAuthLevel('full');
+          setShowAuthModal(false);
+        } else if (sessionData.account_id) {
+          // Account-level auth only
+          setAccount({ id: sessionData.account_id });
+          setAuthLevel('account');
+          setUser(null);
+          // Don't show auth modal - user needs to select a profile
+        } else {
+          // No auth
+          setAccount(null);
+          setUser(null);
+          setAuthLevel(null);
+          setShowAuthModal(true);
+        }
       } else {
         // No active session
+        setAccount(null);
         setUser(null);
+        setAuthLevel(null);
         setShowAuthModal(true);
       }
     } catch (error) {
       console.error('Error checking auth status:', error);
+      setAccount(null);
       setUser(null);
+      setAuthLevel(null);
       setShowAuthModal(true);
     } finally {
       setLoading(false);
     }
   };
 
+  // Layer 1: Account login
+  const accountLogin = async (slug, password) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/account/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ slug, password })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Account login failed');
+      }
+
+      const data = await res.json();
+      
+      // Small delay to ensure cookie is fully set
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Set account-level auth
+      setAccount(data.account);
+      setAuthLevel('account');
+      setUser(null); // Clear any previous user
+      setShowAuthModal(false);
+      
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Get users for current account
+  const getAccountUsers = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/account/users`, {
+        credentials: 'include'
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to get users');
+      }
+
+      return await res.json();
+    } catch (error) {
+      console.error('Error getting account users:', error);
+      return [];
+    }
+  };
+
+  // Layer 2: User selection
+  const selectUser = async (userId, pin = null, password = null) => {
+    try {
+      const body = { user_id: userId };
+      if (pin) body.pin = pin;
+      if (password) body.password = password;
+
+      const res = await fetch(`${API_BASE_URL}/api/auth/user/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'User selection failed');
+      }
+
+      const data = await res.json();
+      
+      if (data.requires_full_password) {
+        return { success: false, requiresPassword: true };
+      }
+
+      // Small delay to ensure cookie is fully set
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Set full auth
+      setAccount(data.account);
+      setUser({
+        id: data.user.id,
+        username: data.user.username,
+        full_name: data.user.full_name,
+        roles: data.user.roles || [],
+        permissions: data.user.permissions || []
+      });
+      setAuthLevel('full');
+      setShowAuthModal(false);
+      
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Legacy: Direct user login (bypasses account selection)
   const login = async (username, password) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -85,7 +214,10 @@ export const AuthProvider = ({ children }) => {
       // Small delay to ensure cookie is fully set by browser before we update state
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Ensure user object has proper structure
+      // Set full auth (legacy login gives full auth)
+      if (data.user.account_id) {
+        setAccount({ id: data.user.account_id });
+      }
       setUser({
         id: data.user.id,
         username: data.user.username,
@@ -93,6 +225,7 @@ export const AuthProvider = ({ children }) => {
         roles: data.user.roles || [],
         permissions: data.user.permissions || []
       });
+      setAuthLevel('full');
       setShowAuthModal(false);
       return { success: true, data };
     } catch (error) {
@@ -100,6 +233,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Legacy: PIN verification
   const verifyPin = async (userId, pin) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/auth/verify-pin`, {
@@ -123,7 +257,10 @@ export const AuthProvider = ({ children }) => {
       // Small delay to ensure cookie is fully set by browser before we update state
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Ensure user object has proper structure
+      // Set full auth
+      if (data.user.account_id) {
+        setAccount({ id: data.user.account_id });
+      }
       setUser({
         id: data.user.id,
         username: data.user.username,
@@ -131,6 +268,7 @@ export const AuthProvider = ({ children }) => {
         roles: data.user.roles || [],
         permissions: data.user.permissions || []
       });
+      setAuthLevel('full');
       setShowAuthModal(false);
       return { success: true, data };
     } catch (error) {
@@ -147,9 +285,18 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      setAccount(null);
       setUser(null);
+      setAuthLevel(null);
       setShowAuthModal(true);
     }
+  };
+
+  // Switch user within same account (keeps account logged in)
+  const switchUser = async () => {
+    setUser(null);
+    setAuthLevel('account');
+    // Account stays logged in, just need to select user again
   };
 
   const completeFirstRunSetup = async (setupData) => {
@@ -169,6 +316,7 @@ export const AuthProvider = ({ children }) => {
       const data = await res.json();
       // Set user from response
       setUser(data.user);
+      setAuthLevel('full');
       setIsFirstRun(false);
       setShowAuthModal(false);
       return { success: true, data };
@@ -178,11 +326,28 @@ export const AuthProvider = ({ children }) => {
   };
 
   const value = {
+    // Two-layer auth state
+    account,
     user,
+    authLevel,
+    
+    // Computed properties
+    isAuthenticated: authLevel === 'full',
+    isAccountAuthenticated: authLevel === 'account' || authLevel === 'full',
+    
+    // Legacy compatibility
     isFirstRun,
     loading,
     showAuthModal,
     setShowAuthModal,
+    
+    // Two-layer auth methods
+    accountLogin,
+    getAccountUsers,
+    selectUser,
+    switchUser,
+    
+    // Legacy methods (still work, give full auth)
     login,
     verifyPin,
     logout,

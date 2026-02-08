@@ -20,6 +20,7 @@ class BusinessTypeAssignment(Base):
 class Business(Base):
     __tablename__ = 'businesses'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this business belongs to
     name = Column(String, nullable=False)
     # Legacy field - kept for backwards compatibility, will be deprecated
     business_type = Column(String, nullable=True)

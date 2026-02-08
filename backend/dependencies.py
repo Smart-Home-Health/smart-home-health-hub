@@ -6,10 +6,88 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from db import get_db
 from crud.users import get_user_by_id
-from models.users import User
+from models.users import User, Account
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+async def get_current_account_id(request: Request) -> int:
+    """
+    Get the current account ID from request state.
+    
+    This is set by the middleware after JWT validation.
+    Returns the account_id from the token - available for both "account" and "full" auth levels.
+    """
+    account_id = getattr(request.state, "account_id", None) or request.scope.get("account_id")
+    
+    if not account_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated to an account"
+        )
+    
+    return account_id
+
+
+async def get_current_account(
+    request: Request, 
+    db: Session = Depends(get_db)
+) -> Account:
+    """
+    Get the current authenticated account from request state.
+    
+    Available for both "account" and "full" auth levels.
+    """
+    account_id = await get_current_account_id(request)
+    
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account not found"
+        )
+    
+    if not account.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive"
+        )
+    
+    return account
+
+
+async def get_auth_level(request: Request) -> str:
+    """
+    Get the current auth level from request state.
+    
+    Returns "account" for account-only auth, "full" for full user auth.
+    """
+    return getattr(request.state, "auth_level", None) or request.scope.get("auth_level", "full")
+
+
+async def require_full_auth(request: Request) -> bool:
+    """
+    Dependency that ensures user has full auth (not just account-level).
+    
+    Use this on routes that require a specific user to be selected.
+    """
+    auth_level = await get_auth_level(request)
+    
+    if auth_level != "full":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Full authentication required. Please select a user profile."
+        )
+    
+    user_id = getattr(request.state, "user_id", None) or request.scope.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User selection required"
+        )
+    
+    return True
 
 
 async def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:

@@ -2,6 +2,10 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Layout from './components/layout/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import LandingPage from './pages/LandingPage';
+import LoginPage from './pages/LoginPage';
+import UserSelectionPage from './pages/UserSelectionPage';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminSchedule from './pages/admin/AdminSchedule';
@@ -37,13 +41,13 @@ import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
 import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
+import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
-import LoginModal from './components/LoginModal';
 import "./App.css";
 
 function AppContent() {
-  const { isFirstRun, loading, user, showAuthModal } = useAuth();
+  const { isFirstRun, loading } = useAuth();
 
   if (loading) {
     return (
@@ -53,7 +57,8 @@ function AppContent() {
         justifyContent: 'center', 
         height: '100vh',
         fontSize: '18px',
-        color: '#718096'
+        color: '#718096',
+        background: '#1a1f2e'
       }}>
         Loading...
       </div>
@@ -64,78 +69,87 @@ function AppContent() {
     <>
       <Router>
         {isFirstRun && <FirstRunSetup />}
-        {showAuthModal && <LoginModal />}
-        <Layout>
-          <Routes>
-            {/* Main Dashboard Route */}
-            <Route path="/" element={<Dashboard />} />
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/select-user" element={<UserSelectionPage />} />
+          
+          {/* Protected Routes - wrapped in Layout */}
+          <Route path="/live" element={
+            <ProtectedRoute>
+              <Layout>
+                <Dashboard />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          {/* Admin Routes - Protected */}
+          <Route path="/admin" element={<ProtectedRoute><Layout><AdminDashboard /></Layout></ProtectedRoute>} />
+          <Route path="/admin/schedule" element={<ProtectedRoute><Layout><AdminSchedule /></Layout></ProtectedRoute>} />
+          <Route path="/admin/medications" element={<ProtectedRoute><Layout><AdminMedications /></Layout></ProtectedRoute>} />
+          <Route path="/admin/care-tasks" element={<ProtectedRoute><Layout><AdminCareTasks /></Layout></ProtectedRoute>} />
+          <Route path="/admin/equipment" element={<ProtectedRoute><Layout><AdminEquipment /></Layout></ProtectedRoute>} />
+          <Route path="/admin/monitoring" element={<ProtectedRoute><Layout><AdminMonitoring /></Layout></ProtectedRoute>} />
+          <Route path="/admin/settings" element={<ProtectedRoute><Layout><AdminSettings /></Layout></ProtectedRoute>} />
+          <Route path="/admin/businesses" element={<ProtectedRoute><Layout><AdminBusinesses /></Layout></ProtectedRoute>} />
+          <Route path="/admin/providers" element={<ProtectedRoute><Layout><AdminProviders /></Layout></ProtectedRoute>} />
             
-            {/* Admin Routes */}
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/schedule" element={<AdminSchedule />} />
-            <Route path="/admin/medications" element={<AdminMedications />} />
-            <Route path="/admin/care-tasks" element={<AdminCareTasks />} />
-            <Route path="/admin/equipment" element={<AdminEquipment />} />
-            <Route path="/admin/monitoring" element={<AdminMonitoring />} />
-            <Route path="/admin/settings" element={<AdminSettings />} />
-            <Route path="/admin/businesses" element={<AdminBusinesses />} />
-            <Route path="/admin/providers" element={<AdminProviders />} />
+          {/* Care Routes - Protected */}
+          <Route path="/care" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
+          <Route path="/care/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
+          <Route path="/care/users/add" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
+          <Route path="/care/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
+          <Route path="/care/users/permissions" element={<ProtectedRoute><Layout><AdminV2Permissions /></Layout></ProtectedRoute>} />
+          <Route path="/care/medications" element={<ProtectedRoute><Layout><AdminV2Medications /></Layout></ProtectedRoute>} />
+          <Route path="/care/medications/schedule" element={<ProtectedRoute><Layout><AdminV2MedicationsSchedule /></Layout></ProtectedRoute>} />
+          <Route path="/care/medications/history" element={<ProtectedRoute><Layout><AdminV2MedicationsHistory /></Layout></ProtectedRoute>} />
+          <Route path="/care/care-tasks" element={<ProtectedRoute><Layout><AdminV2CareTasks /></Layout></ProtectedRoute>} />
+          <Route path="/care/care-tasks/schedule" element={<ProtectedRoute><Layout><AdminV2CareTasksSchedule /></Layout></ProtectedRoute>} />
+          <Route path="/care/care-tasks/history" element={<ProtectedRoute><Layout><AdminV2CareTasksHistory /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment" element={<ProtectedRoute><Layout><AdminV2Equipment /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/history" element={<ProtectedRoute><Layout><AdminV2EquipmentHistory /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/shipments" element={<ProtectedRoute><Layout><AdminV2Shipments /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/shipments/:id" element={<ProtectedRoute><Layout><AdminV2ShipmentDetail /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/alerts" element={<ProtectedRoute><Layout><AdminV2ShipmentAlerts /></Layout></ProtectedRoute>} />
+          <Route path="/care/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
+          <Route path="/care/providers" element={<ProtectedRoute><Layout><AdminV2Providers /></Layout></ProtectedRoute>} />
+          <Route path="/care/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
+          <Route path="/care/schedule" element={<ProtectedRoute><Layout><AdminV2Schedule /></Layout></ProtectedRoute>} />
             
-            {/* Admin V2 Routes */}
-            <Route path="/admin-v2" element={<AdminV2Dashboard />} />
-            <Route path="/admin-v2/users" element={<AdminV2Users />} />
-            <Route path="/admin-v2/users/add" element={<AdminV2Users />} />
-            <Route path="/admin-v2/users/roles" element={<AdminV2Roles />} />
-            <Route path="/admin-v2/users/permissions" element={<AdminV2Permissions />} />
-            <Route path="/admin-v2/medications" element={<AdminV2Medications />} />
-            <Route path="/admin-v2/medications/schedule" element={<AdminV2MedicationsSchedule />} />
-            <Route path="/admin-v2/medications/history" element={<AdminV2MedicationsHistory />} />
-            <Route path="/admin-v2/care-tasks" element={<AdminV2CareTasks />} />
-            <Route path="/admin-v2/care-tasks/schedule" element={<AdminV2CareTasksSchedule />} />
-            <Route path="/admin-v2/care-tasks/history" element={<AdminV2CareTasksHistory />} />
-            <Route path="/admin-v2/equipment" element={<AdminV2Equipment />} />
-            <Route path="/admin-v2/equipment/history" element={<AdminV2EquipmentHistory />} />
-            <Route path="/admin-v2/equipment/shipments" element={<AdminV2Shipments />} />
-            <Route path="/admin-v2/equipment/shipments/:id" element={<AdminV2ShipmentDetail />} />
-            <Route path="/admin-v2/equipment/alerts" element={<AdminV2ShipmentAlerts />} />
-            <Route path="/admin-v2/patients" element={<AdminV2Patients />} />
-            <Route path="/admin-v2/providers" element={<AdminV2Providers />} />
-            <Route path="/admin-v2/businesses" element={<AdminV2Businesses />} />
-            <Route path="/admin-v2/schedule" element={<AdminV2Schedule />} />
+          {/* Care Vitals Routes */}
+          <Route path="/care/vitals" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
+          <Route path="/care/vitals/history" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
             
-            {/* Admin V2 Vitals Routes */}
-            <Route path="/admin-v2/vitals" element={<AdminV2Vitals />} />
-            <Route path="/admin-v2/vitals/history" element={<AdminV2Vitals />} />
+          {/* Care Symptoms Routes */}
+          <Route path="/care/symptoms" element={<ProtectedRoute><Layout><AdminV2Symptoms /></Layout></ProtectedRoute>} />
+          <Route path="/care/symptoms/active" element={<ProtectedRoute><Layout><AdminV2Symptoms /></Layout></ProtectedRoute>} />
+          <Route path="/care/symptoms/history" element={<ProtectedRoute><Layout><AdminV2Symptoms /></Layout></ProtectedRoute>} />
             
-            {/* Admin V2 Symptoms Routes */}
-            <Route path="/admin-v2/symptoms" element={<AdminV2Symptoms />} />
-            <Route path="/admin-v2/symptoms/active" element={<AdminV2Symptoms />} />
-            <Route path="/admin-v2/symptoms/history" element={<AdminV2Symptoms />} />
+          {/* Care Nutrition Routes */}
+          <Route path="/care/nutrition" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/intake" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/output" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/schedules" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/goals" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
             
-            {/* Admin V2 Nutrition Routes */}
-            <Route path="/admin-v2/nutrition" element={<AdminV2Nutrition />} />
-            <Route path="/admin-v2/nutrition/intake" element={<AdminV2Nutrition />} />
-            <Route path="/admin-v2/nutrition/output" element={<AdminV2Nutrition />} />
-            <Route path="/admin-v2/nutrition/schedules" element={<AdminV2Nutrition />} />
-            <Route path="/admin-v2/nutrition/goals" element={<AdminV2Nutrition />} />
+          {/* Care Profile Routes (Patient-specific) */}
+          <Route path="/care/profile" element={<ProtectedRoute><Layout><AdminV2ProfileSummary /></Layout></ProtectedRoute>} />
+          <Route path="/care/profile/providers" element={<ProtectedRoute><Layout><AdminV2Providers /></Layout></ProtectedRoute>} />
+          <Route path="/care/profile/diagnoses" element={<ProtectedRoute><Layout><AdminV2Diagnoses /></Layout></ProtectedRoute>} />
+          <Route path="/care/profile/implants" element={<ProtectedRoute><Layout><AdminV2Implants /></Layout></ProtectedRoute>} />
+          <Route path="/care/profile/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
             
-            {/* Admin V2 Profile Routes (Patient-specific) */}
-            <Route path="/admin-v2/profile" element={<AdminV2ProfileSummary />} />
-            <Route path="/admin-v2/profile/providers" element={<AdminV2Providers />} />
-            <Route path="/admin-v2/profile/diagnoses" element={<AdminV2Diagnoses />} />
-            <Route path="/admin-v2/profile/implants" element={<AdminV2Implants />} />
-            <Route path="/admin-v2/profile/businesses" element={<AdminV2Businesses />} />
+          {/* Care Configuration Routes (System-wide) */}
+          <Route path="/care/configuration" element={<ProtectedRoute><Layout><AdminV2SettingsGeneral /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/account" element={<ProtectedRoute><Layout><AdminV2AccountSettings /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/permissions" element={<ProtectedRoute><Layout><AdminV2Permissions /></Layout></ProtectedRoute>} />
             
-            {/* Admin V2 Configuration Routes (System-wide) */}
-            <Route path="/admin-v2/configuration" element={<AdminV2SettingsGeneral />} />
-            <Route path="/admin-v2/configuration/patients" element={<AdminV2Patients />} />
-            <Route path="/admin-v2/configuration/users" element={<AdminV2Users />} />
-            <Route path="/admin-v2/configuration/users/roles" element={<AdminV2Roles />} />
-            <Route path="/admin-v2/configuration/users/permissions" element={<AdminV2Permissions />} />
-            
-            <Route path="/admin-v2/*" element={<AdminV2Dashboard />} />
-          </Routes>
-        </Layout>
+          <Route path="/care/*" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
+        </Routes>
       </Router>
     </>
   );

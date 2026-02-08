@@ -6,6 +6,7 @@ from schemas import Base
 class NutritionIntake(Base):
     __tablename__ = 'nutrition_intake'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this intake belongs to
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
     care_task_log_id = Column(Integer, ForeignKey('care_task_log.id'), nullable=True)  # Link to care task completion
     schedule_id = Column(Integer, ForeignKey('nutrition_schedules.id', ondelete='SET NULL'), nullable=True)  # Link to nutrition schedule

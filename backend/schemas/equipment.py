@@ -6,6 +6,7 @@ from schemas import Base
 class Equipment(Base):
     __tablename__ = 'equipment'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this equipment belongs to
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=True)  # NULL = shared equipment
     name = Column(String, nullable=False)
     quantity = Column(Integer, nullable=False, default=1)

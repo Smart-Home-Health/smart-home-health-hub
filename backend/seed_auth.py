@@ -5,8 +5,10 @@ from sqlalchemy.orm import Session
 from crud.users import (
     get_permission_by_name, create_permission,
     get_role_by_name, create_role,
-    assign_permission_to_role
+    assign_permission_to_role,
+    get_default_organization, create_organization
 )
+from models.users import OrganizationType
 import logging
 
 logger = logging.getLogger(__name__)
@@ -196,15 +198,34 @@ def seed_roles(db: Session):
     return created_count
 
 
+def seed_default_organization(db: Session):
+    """Create the default 'Smart Home Health' organization if it doesn't exist"""
+    org = get_default_organization(db)
+    if not org:
+        org = create_organization(
+            db,
+            name="Smart Home Health",
+            slug="smart-home-health",
+            org_type=OrganizationType.OTHER,
+            is_default=True
+        )
+        logger.info("Created default organization: Smart Home Health")
+        return 1
+    return 0
+
+
 def seed_default_data(db: Session):
     """Seed all default roles and permissions"""
     logger.info("Seeding default roles and permissions...")
     
-    # First create permissions
+    # First create default organization
+    org_count = seed_default_organization(db)
+    
+    # Create permissions
     perm_count = seed_permissions(db)
     
     # Then create roles with permissions
     role_count = seed_roles(db)
     
-    logger.info(f"Seeding complete: {perm_count} permissions, {role_count} roles")
-    return {"permissions": perm_count, "roles": role_count}
+    logger.info(f"Seeding complete: {org_count} organizations, {perm_count} permissions, {role_count} roles")
+    return {"organizations": org_count, "permissions": perm_count, "roles": role_count}

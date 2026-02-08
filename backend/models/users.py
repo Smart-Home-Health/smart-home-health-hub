@@ -1,10 +1,22 @@
 """
 User authentication and authorization models
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Table, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Table, Text, JSON, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from db import Base
+import enum
+
+
+class OrganizationType(enum.Enum):
+    """Types of organizations"""
+    PERSONAL = "personal"
+    NURSING_AGENCY = "nursing_agency"
+    HOSPICE = "hospice"
+    HOME_HEALTH = "home_health"
+    HOSPITAL = "hospital"
+    CLINIC = "clinic"
+    OTHER = "other"
 
 
 # Association table for many-to-many relationship between users and roles
@@ -35,6 +47,7 @@ class User(Base):
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this user belongs to
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(100), unique=True, nullable=True, index=True)
     full_name = Column(String(100), nullable=False)
@@ -51,6 +64,7 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Relationships
+    account = relationship("Account", back_populates="users")
     roles = relationship(
         "Role",
         secondary=user_roles,
@@ -60,6 +74,17 @@ class User(Base):
     
     # Relationships
     audit_logs = relationship("AuditLog", back_populates="user")
+    organization_memberships = relationship(
+        "OrganizationMembership",
+        back_populates="user",
+        foreign_keys="OrganizationMembership.user_id",
+        lazy="selectin"
+    )
+    
+    @property
+    def organizations(self):
+        """Get all organizations the user is a member of"""
+        return [m.organization for m in self.organization_memberships if m.is_active]
     
     @property
     def has_pin(self) -> bool:
@@ -163,3 +188,88 @@ class AuditLog(Base):
     
     # Relationships
     user = relationship("User", back_populates="audit_logs")
+
+
+class Organization(Base):
+    """Organization model for multi-tenancy support"""
+    __tablename__ = "organizations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    slug = Column(String(100), unique=True, nullable=False, index=True)  # URL-friendly identifier
+    org_type = Column(SQLEnum(OrganizationType), default=OrganizationType.OTHER, nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)  # True for "Smart Home Health" default org
+    is_active = Column(Boolean, default=True, nullable=False)
+    settings = Column(JSON, nullable=True)  # Organization-specific settings
+    contact_email = Column(String(255), nullable=True)
+    contact_phone = Column(String(50), nullable=True)
+    address = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    memberships = relationship("OrganizationMembership", back_populates="organization", cascade="all, delete-orphan")
+    
+    @property
+    def members(self):
+        """Get all users who are members of this organization"""
+        return [m.user for m in self.memberships if m.is_active]
+    
+    @property
+    def admins(self):
+        """Get all admin users of this organization"""
+        return [m.user for m in self.memberships if m.is_active and m.is_admin]
+
+
+class OrganizationMembership(Base):
+    """Junction table linking users to organizations with role information"""
+    __tablename__ = "organization_memberships"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False, index=True)
+    role = Column(String(50), default="member", nullable=False)  # member, admin, owner
+    is_admin = Column(Boolean, default=False, nullable=False)  # Can manage org settings and members
+    is_active = Column(Boolean, default=True, nullable=False)
+    joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    invited_by_user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    
+    # Relationships
+    user = relationship("User", back_populates="organization_memberships", foreign_keys=[user_id])
+    organization = relationship("Organization", back_populates="memberships")
+    invited_by = relationship("User", foreign_keys=[invited_by_user_id])
+
+
+class Account(Base):
+    """
+    Account model - the primary tenant container.
+    
+    Hierarchy: Organization (SHH, Agency) -> Account (household/subscription) -> All Data
+    
+    Account is the login entity. Users belong to accounts and are selected after account login.
+    All data (patients, equipment, medications, etc.) is scoped to an account.
+    """
+    __tablename__ = "accounts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id', ondelete='SET NULL'), nullable=True, index=True)
+    name = Column(String(100), nullable=False)  # Display name, e.g., "Smith Family"
+    slug = Column(String(100), unique=True, nullable=False, index=True)  # Login username
+    password_hash = Column(String(255), nullable=False)  # bcrypt hash for account login
+    is_default = Column(Boolean, default=False, nullable=False)  # Default account for migration
+    is_active = Column(Boolean, default=True, nullable=False)
+    settings = Column(JSON, nullable=True)  # Account-specific settings
+    contact_email = Column(String(255), nullable=True)
+    contact_phone = Column(String(50), nullable=True)
+    timezone = Column(String(50), default="America/New_York", nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    organization = relationship("Organization", backref="accounts")
+    users = relationship("User", back_populates="account", lazy="selectin")
+    
+    @property
+    def active_users(self):
+        """Get all active users in this account"""
+        return [u for u in self.users if u.is_active]

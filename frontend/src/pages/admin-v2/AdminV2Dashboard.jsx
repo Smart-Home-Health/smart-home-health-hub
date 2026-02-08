@@ -147,7 +147,7 @@ const AdminV2Dashboard = () => {
         {/* Section Header */}
         <div className="admin-v2-section-header">
           <h2 className="admin-v2-section-title">All Patients</h2>
-          <Link to="/admin-v2/patients/create" className="admin-v2-btn admin-v2-btn-primary">
+          <Link to="/care/patients/create" className="admin-v2-btn admin-v2-btn-primary">
             <PlusIcon size={16} /> Add Patient
           </Link>
         </div>
@@ -165,7 +165,7 @@ const AdminV2Dashboard = () => {
             <PatientsIcon size={48} />
             <h3>No patients yet</h3>
             <p>Add your first patient to get started</p>
-            <Link to="/admin-v2/patients/create" className="admin-v2-btn admin-v2-btn-primary">
+            <Link to="/care/patients/create" className="admin-v2-btn admin-v2-btn-primary">
               <PlusIcon size={16} /> Add Patient
             </Link>
           </div>
@@ -195,21 +195,21 @@ const AdminV2Dashboard = () => {
                 {/* Due Counters */}
                 <div className="admin-v2-due-counters">
                   <Link 
-                    to={`/admin-v2/medications?patient=${patient.id}`}
+                    to={`/care/medications?patient=${patient.id}`}
                     className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.medications || 0)}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.medications || 0}</p>
                     <p className="admin-v2-due-label">Meds Due</p>
                   </Link>
                   <Link 
-                    to={`/admin-v2/equipment?patient=${patient.id}`}
+                    to={`/care/equipment?patient=${patient.id}`}
                     className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.equipment || 0)}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.equipment || 0}</p>
                     <p className="admin-v2-due-label">Equip Due</p>
                   </Link>
                   <Link 
-                    to={`/admin-v2/care-tasks?patient=${patient.id}`}
+                    to={`/care/care-tasks?patient=${patient.id}`}
                     className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.tasks || 0)}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.tasks || 0}</p>
@@ -219,10 +219,10 @@ const AdminV2Dashboard = () => {
 
                 {/* Actions */}
                 <div className="admin-v2-patient-actions">
-                  <Link to={`/admin-v2/patients/${patient.id}`} className="admin-v2-btn">
+                  <Link to={`/care/patients/${patient.id}`} className="admin-v2-btn">
                     View Details
                   </Link>
-                  <Link to={`/admin-v2/schedule?patient=${patient.id}`} className="admin-v2-btn admin-v2-btn-primary">
+                  <Link to={`/care/schedule?patient=${patient.id}`} className="admin-v2-btn admin-v2-btn-primary">
                     Schedule
                   </Link>
                 </div>
