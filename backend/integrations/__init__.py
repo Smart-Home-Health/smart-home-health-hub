@@ -10,8 +10,8 @@ Each integration must:
 3. Output VitalReading objects that get normalized into the vitals table
 """
 
-from .base import BaseIntegration, VitalReading, DeviceInfo, SyncResult, IntegrationError, AuthenticationError
-from .registry import IntegrationRegistry, get_integration
+from .base import BaseIntegration, VitalReading, DeviceInfo, SyncResult, IntegrationError, AuthenticationError, SyncError
+from .registry import IntegrationRegistry, get_integration, registry
 
 __all__ = [
     'BaseIntegration',
@@ -20,8 +20,10 @@ __all__ = [
     'SyncResult',
     'IntegrationError',
     'AuthenticationError',
+    'SyncError',
     'IntegrationRegistry',
     'get_integration',
+    'registry',
 ]
 
 # Auto-register integrations by importing them

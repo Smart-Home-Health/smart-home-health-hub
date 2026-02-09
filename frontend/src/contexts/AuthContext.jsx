@@ -55,6 +55,7 @@ export const AuthProvider = ({ children }) => {
             id: sessionData.user_id,
             username: sessionData.username,
             full_name: sessionData.full_name,
+            is_system_admin: sessionData.is_system_admin || false,
             roles: sessionData.roles || [],
             permissions: sessionData.permissions || []
           });
@@ -182,6 +183,7 @@ export const AuthProvider = ({ children }) => {
         id: data.user.id,
         username: data.user.username,
         full_name: data.user.full_name,
+        is_system_admin: data.user.is_system_admin || false,
         roles: data.user.roles || [],
         permissions: data.user.permissions || []
       });
@@ -222,6 +224,7 @@ export const AuthProvider = ({ children }) => {
         id: data.user.id,
         username: data.user.username,
         full_name: data.user.full_name,
+        is_system_admin: data.user.is_system_admin || false,
         roles: data.user.roles || [],
         permissions: data.user.permissions || []
       });
@@ -265,6 +268,7 @@ export const AuthProvider = ({ children }) => {
         id: data.user.id,
         username: data.user.username,
         full_name: data.user.full_name,
+        is_system_admin: data.user.is_system_admin || false,
         roles: data.user.roles || [],
         permissions: data.user.permissions || []
       });

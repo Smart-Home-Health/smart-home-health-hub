@@ -70,6 +70,9 @@ const AdminV2Equipment = () => {
   
   // Quantity modal state
   const [quantityAmount, setQuantityAmount] = useState(1);
+  
+  // Tab state for filtering by category
+  const [activeTab, setActiveTab] = useState('all');
 
   // Permission helper
   const hasPermission = (permission) => {
@@ -395,6 +398,25 @@ const AdminV2Equipment = () => {
     return diff;
   };
 
+  // Filter equipment by active tab
+  const getFilteredEquipment = () => {
+    if (activeTab === 'all') return equipment;
+    if (activeTab === 'equipment') return equipment.filter(e => e.category === 'equipment' && e.scheduled_replacement);
+    if (activeTab === 'supply') return equipment.filter(e => e.category === 'supply');
+    if (activeTab === 'consumable') return equipment.filter(e => e.category === 'equipment' && !e.scheduled_replacement);
+    return equipment;
+  };
+  
+  const filteredEquipment = getFilteredEquipment();
+
+  // Category counts for tabs
+  const categoryCounts = {
+    all: equipment.length,
+    equipment: equipment.filter(e => e.category === 'equipment' && e.scheduled_replacement).length,
+    supply: equipment.filter(e => e.category === 'supply').length,
+    consumable: equipment.filter(e => e.category === 'equipment' && !e.scheduled_replacement).length
+  };
+
   // Stats
   const stats = {
     total: equipment.length,
@@ -460,10 +482,38 @@ const AdminV2Equipment = () => {
               </div>
             </div>
 
+            {/* Category Tabs */}
+            <div className="admin-v2-tabs">
+              <button
+                className={`admin-v2-tab ${activeTab === 'all' ? 'active' : ''}`}
+                onClick={() => setActiveTab('all')}
+              >
+                All <span className="admin-v2-tab-count">{categoryCounts.all}</span>
+              </button>
+              <button
+                className={`admin-v2-tab ${activeTab === 'equipment' ? 'active' : ''}`}
+                onClick={() => setActiveTab('equipment')}
+              >
+                Equipment <span className="admin-v2-tab-count">{categoryCounts.equipment}</span>
+              </button>
+              <button
+                className={`admin-v2-tab ${activeTab === 'supply' ? 'active' : ''}`}
+                onClick={() => setActiveTab('supply')}
+              >
+                Supplies <span className="admin-v2-tab-count">{categoryCounts.supply}</span>
+              </button>
+              <button
+                className={`admin-v2-tab ${activeTab === 'consumable' ? 'active' : ''}`}
+                onClick={() => setActiveTab('consumable')}
+              >
+                Consumables <span className="admin-v2-tab-count">{categoryCounts.consumable}</span>
+              </button>
+            </div>
+
             {/* Action Bar */}
             <div className="admin-v2-page-header">
               <h3 style={{ margin: 0, color: '#e6edf3' }}>
-                Equipment ({equipment.length})
+                {activeTab === 'all' ? 'All Items' : activeTab === 'equipment' ? 'Equipment' : activeTab === 'supply' ? 'Supplies' : 'Consumables'} ({filteredEquipment.length})
               </h3>
               {hasPermission('equipment.create') && (
                 <button
@@ -494,6 +544,12 @@ const AdminV2Equipment = () => {
                   </button>
                 )}
               </div>
+            ) : filteredEquipment.length === 0 ? (
+              <div className="admin-v2-empty-state">
+                <EquipmentIcon size={48} />
+                <h3>No {activeTab === 'equipment' ? 'Equipment' : activeTab === 'supply' ? 'Supplies' : activeTab === 'consumable' ? 'Consumables' : 'Items'} Found</h3>
+                <p className="admin-v2-text-muted">No items match this category.</p>
+              </div>
             ) : (
               <div className="admin-v2-table-container">
                 <table className="admin-v2-table">
@@ -509,7 +565,7 @@ const AdminV2Equipment = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {equipment.map(equip => {
+                    {filteredEquipment.map(equip => {
                       const daysUntil = getDaysUntilDue(equip);
                       const isOverdue = isDue(equip);
                       const isLowStock = equip.reorder_point ? equip.quantity <= equip.reorder_point : equip.quantity <= 2;

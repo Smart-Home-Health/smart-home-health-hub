@@ -46,7 +46,7 @@ def create_shipment(
             parent_shipment_id=parent_shipment_id,
             notes=notes,
             created_by=created_by,
-            status='ordered',
+            status='draft',
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )

@@ -313,6 +313,14 @@ export const EditIcon = ({ size = 20 }) => (
   </svg>
 );
 
+export const CopyIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
 export const TrashIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -477,9 +485,9 @@ export const ToiletIcon = ({ size = 20 }) => (
 export const MenuIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="3" y1="6" x2="21" y2="6" />
-    <line x1="3" y1="12" x2="21" y2="12" />
-    <line x1="3" y1="18" x2="21" y2="18" />
+    <path d="M3 6h18" />
+    <path d="M3 12h18" />
+    <path d="M3 18h18" />
   </svg>
 );
 
@@ -804,5 +812,13 @@ export const TabletIcon = ({ size = 32 }) => (
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
     <line x1="12" y1="18" x2="12.01" y2="18" />
+  </svg>
+);
+
+export const LinkIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
   </svg>
 );

@@ -40,6 +40,9 @@ const AdminV2Schedule = () => {
   // Schedule date state
   const [selectedDate, setSelectedDate] = useState(new Date());
   
+  // Mobile tab state (for showing one section at a time on mobile)
+  const [mobileTab, setMobileTab] = useState('medications');
+  
   // Schedule data state
   const [scheduleData, setScheduleData] = useState({
     medications: [],
@@ -524,8 +527,36 @@ const AdminV2Schedule = () => {
               </div>
             </div>
 
+            {/* Mobile Tab Toggle */}
+            <div className="admin-v2-schedule-mobile-tabs">
+              <button
+                className={`admin-v2-schedule-mobile-tab ${mobileTab === 'medications' ? 'active' : ''}`}
+                onClick={() => setMobileTab('medications')}
+              >
+                <MedicationsIcon size={16} />
+                <span>Meds</span>
+                <span className="admin-v2-schedule-mobile-tab-count">{completedMeds}/{totalMeds}</span>
+              </button>
+              <button
+                className={`admin-v2-schedule-mobile-tab ${mobileTab === 'nutrition' ? 'active' : ''}`}
+                onClick={() => setMobileTab('nutrition')}
+              >
+                <NutritionIcon size={16} />
+                <span>Nutrition</span>
+                <span className="admin-v2-schedule-mobile-tab-count">{completedNutrition}/{totalNutrition}</span>
+              </button>
+              <button
+                className={`admin-v2-schedule-mobile-tab ${mobileTab === 'tasks' ? 'active' : ''}`}
+                onClick={() => setMobileTab('tasks')}
+              >
+                <TasksIcon size={16} />
+                <span>Tasks</span>
+                <span className="admin-v2-schedule-mobile-tab-count">{completedTasks}/{totalTasks}</span>
+              </button>
+            </div>
+
             {/* Schedule Grid */}
-            <div className="admin-v2-schedule-container">
+            <div className={`admin-v2-schedule-container mobile-tab-${mobileTab}`}>
               {loading ? (
                 <div className="admin-v2-loading">Loading schedule...</div>
               ) : (

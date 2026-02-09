@@ -16,7 +16,6 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session, joinedload
-from pydantic import BaseModel, Field
 
 from dependencies import get_db
 from routes.auth import require_full_auth, get_current_account_id
@@ -24,81 +23,16 @@ from schemas.patient import Patient
 from schemas.integration import Integration as IntegrationModel, PatientIntegration, IntegrationDevice
 from schemas.vital import Vital
 from integrations import registry, get_integration, AuthenticationError, SyncError
+from models.integrations import (
+    IntegrationInfoResponse,
+    IntegrationDBResponse,
+    PatientIntegrationCreate,
+    PatientIntegrationResponse,
+    IntegrationDeviceResponse,
+    SyncResultResponse,
+)
 
-router = APIRouter(prefix="/integrations", tags=["integrations"])
-
-
-# ============================================================================
-# Pydantic Models
-# ============================================================================
-
-class IntegrationInfoResponse(BaseModel):
-    slug: str
-    name: str
-    description: str
-    auth_type: str
-    supported_vitals: List[str]
-    config_schema: dict
-
-
-class IntegrationDBResponse(BaseModel):
-    """Response for database-stored integration"""
-    id: int
-    name: str
-    slug: str
-    description: Optional[str] = None
-    icon: Optional[str] = None
-    auth_type: str
-    config_schema: Optional[dict] = None
-    supported_vitals: Optional[List[str]] = None
-    is_active: bool
-    
-    class Config:
-        from_attributes = True
-
-
-class PatientIntegrationCreate(BaseModel):
-    integration_slug: str
-    settings: dict = Field(default_factory=dict)
-
-
-class PatientIntegrationResponse(BaseModel):
-    id: int
-    patient_id: int
-    integration_id: int
-    integration_slug: Optional[str] = None
-    integration_name: Optional[str] = None
-    is_enabled: bool
-    settings: Optional[dict] = None
-    last_sync_at: Optional[datetime] = None
-    last_sync_status: Optional[str] = None
-    last_sync_error: Optional[str] = None
-    sync_count: int = 0
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-class IntegrationDeviceResponse(BaseModel):
-    id: int
-    patient_integration_id: int
-    device_id: str
-    device_type: str
-    device_name: Optional[str] = None
-    device_model: Optional[str] = None
-    is_enabled: bool = True
-    last_seen_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
-
-
-class SyncResultResponse(BaseModel):
-    success: bool
-    readings_count: int
-    error_message: Optional[str] = None
-    sync_timestamp: datetime
+router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
 
 # In-memory OAuth state storage (use Redis in production)

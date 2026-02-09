@@ -63,6 +63,15 @@ const AdminV2ShipmentDetail = () => {
   const [receiveData, setReceiveData] = useState({});
   const [savingReceive, setSavingReceive] = useState(false);
   
+  // Receiving mode - edit all items at once
+  const [receivingMode, setReceivingMode] = useState(false);
+  const [itemEdits, setItemEdits] = useState({});
+  const [savingItems, setSavingItems] = useState(false);
+  
+  // Draft editing state
+  const [draftEdits, setDraftEdits] = useState({});
+  const [savingDraft, setSavingDraft] = useState(false);
+  
   // Finalize state
   const [finalizing, setFinalizing] = useState(false);
 
@@ -233,6 +242,154 @@ const AdminV2ShipmentDetail = () => {
     }
   };
 
+  const handleMarkAsOrdered = async () => {
+    if (!window.confirm('Mark this shipment as Ordered? You can still edit items after marking as ordered.')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${config.apiUrl}/api/shipments/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'ordered' })
+      });
+      
+      if (response.ok) {
+        fetchShipment();
+      } else {
+        const errData = await response.json();
+        alert(errData.error || 'Failed to update shipment status');
+      }
+    } catch (err) {
+      console.error('Error updating shipment:', err);
+      alert('Error connecting to server');
+    }
+  };
+
+  const updateDraftField = (field, value) => {
+    setDraftEdits(prev => ({ ...prev, [field]: value }));
+  };
+
+  const saveDraftField = async (field) => {
+    const value = draftEdits[field];
+    if (value === undefined) return;
+    
+    setSavingDraft(true);
+    try {
+      const response = await fetch(`${config.apiUrl}/api/shipments/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ [field]: value || null })
+      });
+      
+      if (response.ok) {
+        fetchShipment();
+        // Clear the edit for this field
+        setDraftEdits(prev => {
+          const { [field]: _, ...rest } = prev;
+          return rest;
+        });
+      } else {
+        const errData = await response.json();
+        alert(errData.error || 'Failed to save');
+      }
+    } catch (err) {
+      console.error('Error saving field:', err);
+      alert('Error connecting to server');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleBeginReceiving = async () => {
+    // Pre-fill item edits assuming order is OK
+    const edits = {};
+    (shipment.items || []).forEach(item => {
+      edits[item.id] = {
+        qty_shipped: item.qty_ordered,
+        qty_backordered: 0,
+        qty_received: item.qty_ordered
+      };
+    });
+    setItemEdits(edits);
+    setReceivingMode(true);
+    
+    // Update status to receiving
+    try {
+      await fetch(`${config.apiUrl}/api/shipments/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'receiving' })
+      });
+      fetchShipment();
+    } catch (err) {
+      console.error('Error updating status:', err);
+    }
+  };
+
+  const updateItemEdit = (itemId, field, value) => {
+    setItemEdits(prev => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        [field]: parseInt(value) || 0
+      }
+    }));
+  };
+
+  const handleSaveReceiving = async () => {
+    setSavingItems(true);
+    
+    try {
+      // Update each item's quantities
+      for (const [itemId, edits] of Object.entries(itemEdits)) {
+        await fetch(`${config.apiUrl}/api/shipments/${id}/items/${itemId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            qty_shipped: edits.qty_shipped,
+            qty_backordered: edits.qty_backordered
+          })
+        });
+        
+        // Record receipt for received quantity
+        if (edits.qty_received > 0) {
+          await fetch(`${config.apiUrl}/api/shipments/${id}/receive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              shipment_item_id: parseInt(itemId),
+              qty_received: edits.qty_received,
+              condition: 'good'
+            })
+          });
+        }
+      }
+      
+      // Update status to complete
+      await fetch(`${config.apiUrl}/api/shipments/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'complete' })
+      });
+      
+      setReceivingMode(false);
+      setItemEdits({});
+      fetchShipment();
+    } catch (err) {
+      console.error('Error saving receiving data:', err);
+      alert('Error saving changes');
+    } finally {
+      setSavingItems(false);
+    }
+  };
+
   const handleFinalizeShipment = async () => {
     if (!window.confirm('Finalize this shipment? This will create backorder shipments and alerts for any discrepancies.')) {
       return;
@@ -279,6 +436,7 @@ const AdminV2ShipmentDetail = () => {
 
   const getStatusBadgeClass = (status) => {
     switch (status) {
+      case 'draft': return 'admin-v2-badge-warning';
       case 'ordered': return 'admin-v2-badge-secondary';
       case 'shipped': return 'admin-v2-badge-info';
       case 'receiving': return 'admin-v2-badge-warning';
@@ -341,6 +499,10 @@ const AdminV2ShipmentDetail = () => {
     );
   }
 
+  const isDraft = shipment.status === 'draft';
+  const isOrdered = shipment.status === 'ordered';
+  const canMarkOrdered = isDraft && shipment.items?.length > 0;
+  const canBeginReceiving = isOrdered && shipment.items?.length > 0;
   const canReceive = ['shipped', 'receiving'].includes(shipment.status);
   const canFinalize = ['receiving'].includes(shipment.status) && shipment.items?.length > 0;
   const isFinalized = ['complete', 'partial', 'verified'].includes(shipment.status);
@@ -375,11 +537,71 @@ const AdminV2ShipmentDetail = () => {
           </div>
           <div className="admin-v2-detail-meta">
             <span><strong>Supplier:</strong> {shipment.supplier_name || '-'}</span>
-            <span><strong>PO:</strong> {shipment.po_number || '-'}</span>
-            <span><strong>Ship Date:</strong> {formatDate(shipment.ship_date)}</span>
-            <span><strong>Expected:</strong> {formatDate(shipment.expected_delivery)}</span>
-            {shipment.tracking_number && (
-              <span><strong>Tracking:</strong> {shipment.tracking_number}</span>
+            {isDraft ? (
+              <>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <strong>PO:</strong>
+                  <input
+                    type="text"
+                    value={draftEdits.po_number ?? shipment.po_number ?? ''}
+                    onChange={e => updateDraftField('po_number', e.target.value)}
+                    onBlur={() => saveDraftField('po_number')}
+                    placeholder="Enter PO #"
+                    style={{ width: '120px', padding: '4px 8px', background: 'var(--admin-input-bg)', border: '1px solid var(--admin-border)', borderRadius: '4px', color: 'inherit' }}
+                  />
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <strong>Order #:</strong>
+                  <input
+                    type="text"
+                    value={draftEdits.order_number ?? shipment.order_number ?? ''}
+                    onChange={e => updateDraftField('order_number', e.target.value)}
+                    onBlur={() => saveDraftField('order_number')}
+                    placeholder="Enter Order #"
+                    style={{ width: '120px', padding: '4px 8px', background: 'var(--admin-input-bg)', border: '1px solid var(--admin-border)', borderRadius: '4px', color: 'inherit' }}
+                  />
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <strong>Ship Date:</strong>
+                  <input
+                    type="date"
+                    value={draftEdits.ship_date ?? (shipment.ship_date ? shipment.ship_date.split('T')[0] : '')}
+                    onChange={e => updateDraftField('ship_date', e.target.value)}
+                    onBlur={() => saveDraftField('ship_date')}
+                    style={{ padding: '4px 8px', background: 'var(--admin-input-bg)', border: '1px solid var(--admin-border)', borderRadius: '4px', color: 'inherit' }}
+                  />
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <strong>Expected:</strong>
+                  <input
+                    type="date"
+                    value={draftEdits.expected_delivery ?? (shipment.expected_delivery ? shipment.expected_delivery.split('T')[0] : '')}
+                    onChange={e => updateDraftField('expected_delivery', e.target.value)}
+                    onBlur={() => saveDraftField('expected_delivery')}
+                    style={{ padding: '4px 8px', background: 'var(--admin-input-bg)', border: '1px solid var(--admin-border)', borderRadius: '4px', color: 'inherit' }}
+                  />
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <strong>Tracking:</strong>
+                  <input
+                    type="text"
+                    value={draftEdits.tracking_number ?? shipment.tracking_number ?? ''}
+                    onChange={e => updateDraftField('tracking_number', e.target.value)}
+                    onBlur={() => saveDraftField('tracking_number')}
+                    placeholder="Enter tracking #"
+                    style={{ width: '150px', padding: '4px 8px', background: 'var(--admin-input-bg)', border: '1px solid var(--admin-border)', borderRadius: '4px', color: 'inherit' }}
+                  />
+                </span>
+              </>
+            ) : (
+              <>
+                <span><strong>PO:</strong> {shipment.po_number || '-'}</span>
+                <span><strong>Ship Date:</strong> {formatDate(shipment.ship_date)}</span>
+                <span><strong>Expected:</strong> {formatDate(shipment.expected_delivery)}</span>
+                {shipment.tracking_number && (
+                  <span><strong>Tracking:</strong> {shipment.tracking_number}</span>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -397,6 +619,68 @@ const AdminV2ShipmentDetail = () => {
                   {alert.resolved && <span className="admin-v2-badge admin-v2-badge-success">Resolved</span>}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Draft Status Notice */}
+        {isDraft && (
+          <div className="admin-v2-info-banner">
+            <div className="admin-v2-info-content">
+              <strong>Draft Shipment</strong>
+              <p>Add items to this shipment, then mark it as Ordered when ready.</p>
+            </div>
+            {hasPermission('equipment.edit') && canMarkOrdered && (
+              <button
+                className="admin-v2-btn admin-v2-btn-primary"
+                onClick={handleMarkAsOrdered}
+              >
+                <CheckIcon size={16} /> Mark as Ordered
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Ordered Status Notice - Begin Receiving */}
+        {isOrdered && (
+          <div className="admin-v2-info-banner">
+            <div className="admin-v2-info-content">
+              <strong>Order Placed</strong>
+              <p>When the shipment arrives, begin receiving to record quantities.</p>
+            </div>
+            {hasPermission('equipment.edit') && canBeginReceiving && (
+              <button
+                className="admin-v2-btn admin-v2-btn-primary"
+                onClick={handleBeginReceiving}
+              >
+                <CheckIcon size={16} /> Begin Receiving
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Receiving Mode Banner */}
+        {receivingMode && (
+          <div className="admin-v2-info-banner" style={{ background: 'var(--admin-info-bg, #e3f2fd)', borderColor: 'var(--admin-info-border, #90caf9)' }}>
+            <div className="admin-v2-info-content">
+              <strong>Receiving in Progress</strong>
+              <p>Update shipped, backordered, and received quantities below. Click Save to record changes.</p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                className="admin-v2-btn admin-v2-btn-secondary"
+                onClick={() => setReceivingMode(false)}
+                disabled={savingItems}
+              >
+                Cancel
+              </button>
+              <button
+                className="admin-v2-btn admin-v2-btn-success"
+                onClick={handleSaveReceiving}
+                disabled={savingItems}
+              >
+                {savingItems ? 'Saving...' : 'Save & Finalize'}
+              </button>
             </div>
           </div>
         )}
@@ -426,13 +710,14 @@ const AdminV2ShipmentDetail = () => {
                     <th style={{ textAlign: 'center' }}>Shipped</th>
                     <th style={{ textAlign: 'center' }}>B/O</th>
                     <th style={{ textAlign: 'center' }}>Received</th>
-                    {canReceive && <th>Receive</th>}
+                    {canReceive && !receivingMode && <th>Receive</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {shipment.items.map(item => {
                     const { totalReceived, remaining } = getItemStats(item);
                     const receiveEntry = receiveData[item.id];
+                    const itemEdit = itemEdits[item.id] || {};
                     
                     return (
                       <tr key={item.id}>
@@ -443,20 +728,52 @@ const AdminV2ShipmentDetail = () => {
                         </td>
                         <td>{item.manufacturer_name || '-'}</td>
                         <td style={{ textAlign: 'center' }}>{item.qty_ordered}</td>
-                        <td style={{ textAlign: 'center' }}>{item.qty_shipped}</td>
                         <td style={{ textAlign: 'center' }}>
-                          {item.qty_backordered > 0 ? (
-                            <span className="admin-v2-badge admin-v2-badge-warning">{item.qty_backordered}</span>
-                          ) : '-'}
+                          {receivingMode ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={itemEdit.qty_shipped ?? item.qty_shipped ?? 0}
+                              onChange={e => updateItemEdit(item.id, 'qty_shipped', parseInt(e.target.value) || 0)}
+                              style={{ width: '60px', textAlign: 'center' }}
+                            />
+                          ) : (
+                            item.qty_shipped
+                          )}
                         </td>
                         <td style={{ textAlign: 'center' }}>
-                          {totalReceived > 0 ? (
-                            <span className={totalReceived >= item.qty_shipped ? 'admin-v2-text-success' : ''}>
-                              {totalReceived} / {item.qty_shipped}
-                            </span>
-                          ) : '-'}
+                          {receivingMode ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={itemEdit.qty_backordered ?? item.qty_backordered ?? 0}
+                              onChange={e => updateItemEdit(item.id, 'qty_backordered', parseInt(e.target.value) || 0)}
+                              style={{ width: '60px', textAlign: 'center' }}
+                            />
+                          ) : (
+                            item.qty_backordered > 0 ? (
+                              <span className="admin-v2-badge admin-v2-badge-warning">{item.qty_backordered}</span>
+                            ) : '-'
+                          )}
                         </td>
-                        {canReceive && (
+                        <td style={{ textAlign: 'center' }}>
+                          {receivingMode ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={itemEdit.qty_received ?? totalReceived ?? 0}
+                              onChange={e => updateItemEdit(item.id, 'qty_received', parseInt(e.target.value) || 0)}
+                              style={{ width: '60px', textAlign: 'center' }}
+                            />
+                          ) : (
+                            totalReceived > 0 ? (
+                              <span className={totalReceived >= item.qty_shipped ? 'admin-v2-text-success' : ''}>
+                                {totalReceived} / {item.qty_shipped}
+                              </span>
+                            ) : '-'
+                          )}
+                        </td>
+                        {canReceive && !receivingMode && (
                           <td>
                             {remaining > 0 && receiveEntry ? (
                               <div className="admin-v2-receive-form">

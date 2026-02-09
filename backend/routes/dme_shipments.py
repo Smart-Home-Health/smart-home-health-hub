@@ -241,6 +241,33 @@ async def update_shipment(
         return {"success": False, "error": str(e)}
 
 
+@router.patch("/{shipment_id}")
+async def patch_shipment(
+    shipment_id: int,
+    data: ShipmentUpdate,
+    db: Session = Depends(get_db)
+):
+    """Partially update a shipment (e.g., change status)"""
+    try:
+        update_data = data.model_dump(exclude_unset=True)
+        
+        # Parse datetime fields if present
+        for field in ['ship_date', 'expected_delivery', 'actual_delivery']:
+            if field in update_data and update_data[field]:
+                update_data[field] = parse_datetime(update_data[field])
+        
+        success = crud.update_shipment(db, shipment_id, **update_data)
+        if success:
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="Shipment not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error patching shipment {shipment_id}: {e}")
+        return {"success": False, "error": str(e)}
+
+
 @router.delete("/{shipment_id}")
 async def delete_shipment(
     shipment_id: int,
@@ -251,6 +278,66 @@ async def delete_shipment(
         success = crud.delete_shipment(db, shipment_id)
         return {"success": success}
     except Exception as e:
+        logger.error(f"Error deleting shipment {shipment_id}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/{shipment_id}/copy")
+async def copy_shipment(
+    shipment_id: int,
+    db: Session = Depends(get_db)
+):
+    """Copy a shipment with all items as a new draft"""
+    try:
+        # Get the original shipment
+        original = crud.get_shipment(db, shipment_id)
+        if not original:
+            raise HTTPException(status_code=404, detail="Shipment not found")
+        
+        # Create new shipment with same basic info but as draft
+        new_shipment = crud.create_shipment(
+            db,
+            patient_id=original['patient_id'],
+            supplier_id=original.get('supplier_id'),
+            po_number=None,  # Clear PO number for new shipment
+            order_number=None,  # Clear order number
+            ship_date=None,
+            expected_delivery=None,
+            tracking_number=None,
+            ship_method=original.get('ship_method'),
+            warehouse_loc=original.get('warehouse_loc'),
+            notes=f"Copied from shipment #{shipment_id}"
+        )
+        
+        if not new_shipment:
+            return {"success": False, "error": "Failed to create new shipment"}
+        
+        # Copy all items from original shipment
+        for item in original.get('items', []):
+            crud.add_shipment_item(
+                db,
+                shipment_id=new_shipment.id,
+                equipment_id=item.get('equipment_id'),
+                item_number=item.get('item_number'),
+                item_description=item.get('item_description'),
+                manufacturer_name=item.get('manufacturer_name'),
+                qty_ordered=item.get('qty_ordered', 0),
+                qty_shipped=0,  # Reset shipped to 0
+                qty_backordered=0,  # Reset B/O to 0
+                unit_of_measure=item.get('unit_of_measure'),
+                unit_description=item.get('unit_description'),
+                unit_price=item.get('unit_price'),
+                lot_number=None,  # Clear lot number
+                notes=item.get('notes')
+            )
+        
+        logger.info(f"Copied shipment {shipment_id} to new shipment {new_shipment.id}")
+        return {"success": True, "id": new_shipment.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error copying shipment {shipment_id}: {e}")
+        return {"success": False, "error": str(e)}
         logger.error(f"Error deleting shipment {shipment_id}: {e}")
         return {"success": False, "error": str(e)}
 

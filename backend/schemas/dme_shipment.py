@@ -27,8 +27,8 @@ class DMEShipment(Base):
     expected_delivery = Column(TIMESTAMP(timezone=True), nullable=True)
     actual_delivery = Column(TIMESTAMP(timezone=True), nullable=True)
     
-    # Status: ordered, shipped, receiving, complete, partial, verified
-    status = Column(String, nullable=False, default='ordered')
+    # Status: draft, ordered, shipped, receiving, complete, partial, verified
+    status = Column(String, nullable=False, default='draft')
     
     # Shipping details
     tracking_number = Column(String, nullable=True)

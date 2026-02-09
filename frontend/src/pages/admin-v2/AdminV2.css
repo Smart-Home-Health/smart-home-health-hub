@@ -9,7 +9,7 @@
 
 /* Sidebar Styles */
 .admin-v2-sidebar {
-  width: 240px;
+  width: 280px;
   background: #161b22;
   border-right: 1px solid #30363d;
   display: flex;
@@ -48,6 +48,11 @@
   color: #8b949e;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.admin-v2-sidebar-toggle svg {
+  stroke: currentColor;
+  flex-shrink: 0;
 }
 
 .admin-v2-sidebar-toggle:hover {
@@ -129,6 +134,23 @@
   font-size: 1.1rem;
   font-weight: 600;
   color: #58a6ff;
+}
+
+.admin-v2-logo-full {
+  display: inline;
+}
+
+.admin-v2-logo-short {
+  display: none;
+}
+
+@media (max-width: 1200px) {
+  .admin-v2-logo-full {
+    display: none;
+  }
+  .admin-v2-logo-short {
+    display: inline;
+  }
 }
 
 /* Patient Selector in Sidebar */
@@ -401,7 +423,7 @@
 /* Main Content Area */
 .admin-v2-main {
   flex: 1;
-  margin-left: 240px;
+  margin-left: 280px;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -2961,6 +2983,25 @@
   color: #e6edf3;
 }
 
+.admin-v2-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  margin-left: 6px;
+  background: rgba(139, 148, 158, 0.2);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.admin-v2-tab.active .admin-v2-tab-count {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+}
+
 .admin-v2-filters {
   display: flex;
   gap: 0.75rem;
@@ -4077,6 +4118,130 @@
 .admin-v2-stat-icon.nutrition {
   background: rgba(126, 231, 135, 0.15);
   color: #7ee787;
+}
+
+/* Mobile Schedule Tabs */
+.admin-v2-schedule-mobile-tabs {
+  display: none;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  background: #21262d;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.admin-v2-schedule-mobile-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 0.5rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #8b949e;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-v2-schedule-mobile-tab:hover {
+  color: #e6edf3;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.admin-v2-schedule-mobile-tab.active {
+  background: #30363d;
+  color: #e6edf3;
+}
+
+.admin-v2-schedule-mobile-tab-count {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(139, 148, 158, 0.2);
+}
+
+.admin-v2-schedule-mobile-tab.active .admin-v2-schedule-mobile-tab-count {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+}
+
+/* Mobile Schedule Responsive */
+@media (max-width: 768px) {
+  .admin-v2-schedule-mobile-tabs {
+    display: flex;
+  }
+  
+  /* Hide summary stats on mobile - info is in tabs */
+  .admin-v2-summary-stats {
+    display: none;
+  }
+  
+  /* Adjust grid for mobile - time + one column */
+  .admin-v2-schedule-header {
+    grid-template-columns: 60px 1fr;
+  }
+  
+  .admin-v2-schedule-row {
+    grid-template-columns: 60px 1fr;
+  }
+  
+  /* Hide column headers except time */
+  .admin-v2-schedule-header .admin-v2-schedule-col {
+    display: none;
+  }
+  
+  /* Show the active tab's column header */
+  .admin-v2-schedule-container.mobile-tab-medications .admin-v2-schedule-header .admin-v2-schedule-col.medications,
+  .admin-v2-schedule-container.mobile-tab-nutrition .admin-v2-schedule-header .admin-v2-schedule-col.nutrition,
+  .admin-v2-schedule-container.mobile-tab-tasks .admin-v2-schedule-header .admin-v2-schedule-col.tasks {
+    display: flex;
+  }
+  
+  /* Hide all columns by default on mobile */
+  .admin-v2-schedule-row .admin-v2-schedule-col {
+    display: none;
+  }
+  
+  /* Show only the active tab's column */
+  .admin-v2-schedule-container.mobile-tab-medications .admin-v2-schedule-row .admin-v2-schedule-col.medications,
+  .admin-v2-schedule-container.mobile-tab-nutrition .admin-v2-schedule-row .admin-v2-schedule-col.nutrition,
+  .admin-v2-schedule-container.mobile-tab-tasks .admin-v2-schedule-row .admin-v2-schedule-col.tasks {
+    display: block;
+  }
+  
+  /* Time column adjustments */
+  .admin-v2-schedule-time-col {
+    padding: 0.5rem;
+    font-size: 0.8rem;
+  }
+  
+  /* Shrink item padding on mobile */
+  .admin-v2-schedule-item {
+    padding: 0.5rem;
+  }
+  
+  .admin-v2-schedule-item-header {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+  
+  .admin-v2-schedule-item-name {
+    flex: 1 1 100%;
+    order: -1;
+  }
+  
+  .admin-v2-schedule-item-time {
+    font-size: 0.7rem;
+  }
+  
+  .admin-v2-schedule-item-dose,
+  .admin-v2-schedule-item-category {
+    font-size: 0.7rem;
+  }
 }
 
 /* ===== PRINT STYLES ===== */
@@ -7830,6 +7995,34 @@
   font-size: 0.875rem;
 }
 
+.admin-v2-info-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: rgba(187, 128, 9, 0.1);
+  border: 1px solid rgba(187, 128, 9, 0.3);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.admin-v2-info-content {
+  flex: 1;
+}
+
+.admin-v2-info-content strong {
+  display: block;
+  color: #d29922;
+  margin-bottom: 4px;
+}
+
+.admin-v2-info-content p {
+  margin: 0;
+  color: #8b949e;
+  font-size: 0.875rem;
+}
+
 .admin-v2-finalize-section {
   text-align: center;
   padding: 2rem;
@@ -7953,4 +8146,93 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+}
+
+/* ==============================================
+   Integrations Page Styles
+   ============================================== */
+
+.admin-v2-integration-name {
+  font-weight: 500;
+  color: #e6edf3;
+}
+
+.admin-v2-integration-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-v2-integration-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 1rem;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.admin-v2-integration-option:hover {
+  background: #30363d;
+  border-color: #484f58;
+}
+
+.admin-v2-integration-option-info {
+  flex: 1;
+}
+
+.admin-v2-integration-option-info strong {
+  display: block;
+  color: #e6edf3;
+  margin-bottom: 0.25rem;
+}
+
+.admin-v2-row-disabled {
+  opacity: 0.5;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.admin-v2-text-danger {
+  color: #f85149;
+}
+
+.admin-v2-btn-success-ghost {
+  color: #3fb950;
+  background: transparent;
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.admin-v2-btn-success-ghost:hover {
+  background: rgba(63, 185, 80, 0.1);
+  border-color: #3fb950;
+}
+
+.admin-v2-btn-danger-ghost {
+  color: #f85149;
+  background: transparent;
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.admin-v2-btn-danger-ghost:hover {
+  background: rgba(248, 81, 73, 0.1);
+  border-color: #f85149;
+}
+
+.admin-v2-badge-secondary {
+  background: rgba(139, 148, 158, 0.2);
+  color: #8b949e;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
 }

@@ -11,12 +11,14 @@ import {
   ClockIcon,
   CheckIcon,
   ChevronRightIcon,
-  AlertIcon
+  AlertIcon,
+  CopyIcon
 } from '../../components/Icons';
 import './AdminV2.css';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
+  { value: 'draft', label: 'Draft' },
   { value: 'ordered', label: 'Ordered' },
   { value: 'shipped', label: 'Shipped' },
   { value: 'receiving', label: 'Receiving' },
@@ -195,6 +197,28 @@ const AdminV2Shipments = () => {
     }
   };
 
+  const handleCopyShipment = async (shipmentId) => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/shipments/${shipmentId}/copy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Navigate to the new copied shipment
+        navigate(`/care/equipment/shipments/${data.id}?patient=${selectedPatient.id}`);
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || 'Failed to copy shipment');
+      }
+    } catch (err) {
+      console.error('Error copying shipment:', err);
+      alert('Error connecting to server');
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString();
@@ -202,6 +226,7 @@ const AdminV2Shipments = () => {
 
   const getStatusBadgeClass = (status) => {
     switch (status) {
+      case 'draft': return 'admin-v2-badge-warning';
       case 'ordered': return 'admin-v2-badge-secondary';
       case 'shipped': return 'admin-v2-badge-info';
       case 'receiving': return 'admin-v2-badge-warning';
@@ -215,6 +240,7 @@ const AdminV2Shipments = () => {
   // Stats
   const stats = {
     total: shipments.length,
+    draft: shipments.filter(s => s.status === 'draft').length,
     receiving: shipments.filter(s => s.status === 'receiving').length,
     backorders: shipments.filter(s => s.is_backorder).length,
     partial: shipments.filter(s => s.status === 'partial').length
@@ -248,21 +274,21 @@ const AdminV2Shipments = () => {
                 </div>
               </div>
               <div className="admin-v2-stat-card">
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(187, 128, 9, 0.15)' }}>
+                  <ClockIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.draft}</h4>
+                  <p>Drafts</p>
+                </div>
+              </div>
+              <div className="admin-v2-stat-card">
                 <div className="admin-v2-stat-icon" style={{ background: 'rgba(158, 106, 3, 0.15)' }}>
                   <ClockIcon size={20} />
                 </div>
                 <div className="admin-v2-stat-info">
                   <h4>{stats.receiving}</h4>
-                  <p>In Progress</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(31, 111, 235, 0.15)' }}>
-                  <EquipmentIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.backorders}</h4>
-                  <p>Backorders</p>
+                  <p>Receiving</p>
                 </div>
               </div>
               <div className="admin-v2-stat-card">
@@ -343,8 +369,7 @@ const AdminV2Shipments = () => {
                     <tr>
                       <th>Order #</th>
                       <th>Supplier</th>
-                      <th>Ship Date</th>
-                      <th>Delivery</th>
+                      <th>Order Date</th>
                       <th>Status</th>
                       <th>Items</th>
                       <th>Type</th>
@@ -362,8 +387,7 @@ const AdminV2Shipments = () => {
                           <strong>{shipment.order_number || shipment.po_number || `#${shipment.id}`}</strong>
                         </td>
                         <td>{shipment.supplier_name || '-'}</td>
-                        <td>{formatDate(shipment.ship_date)}</td>
-                        <td>{formatDate(shipment.actual_delivery || shipment.expected_delivery)}</td>
+                        <td>{formatDate(shipment.order_date || shipment.ship_date)}</td>
                         <td>
                           <span className={`admin-v2-badge ${getStatusBadgeClass(shipment.status)}`}>
                             {shipment.status}
@@ -377,7 +401,14 @@ const AdminV2Shipments = () => {
                             <span className="admin-v2-badge admin-v2-badge-secondary">Regular</span>
                           )}
                         </td>
-                        <td>
+                        <td style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                            onClick={(e) => { e.stopPropagation(); handleCopyShipment(shipment.id); }}
+                            title="Copy Shipment"
+                          >
+                            <CopyIcon size={14} />
+                          </button>
                           <ChevronRightIcon size={16} />
                         </td>
                       </tr>

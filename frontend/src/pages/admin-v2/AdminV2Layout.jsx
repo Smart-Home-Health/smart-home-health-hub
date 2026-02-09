@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, Outlet, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import logoImage from '../../assets/logo2.png';
 import {
   DashboardIcon,
   PatientsIcon,
@@ -239,8 +238,14 @@ const AdminV2Layout = ({ children }) => {
       <aside className={`admin-v2-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="admin-v2-sidebar-header">
           <Link to="/" className="admin-v2-logo-link">
-            <img src={logoImage} alt="SHH Logo" className="admin-v2-logo" />
-            {!sidebarCollapsed && <span className="admin-v2-logo-text">Admin V2</span>}
+            {!sidebarCollapsed ? (
+              <>
+                <span className="admin-v2-logo-text admin-v2-logo-full">Smart Home Health</span>
+                <span className="admin-v2-logo-text admin-v2-logo-short">SHH</span>
+              </>
+            ) : (
+              <span className="admin-v2-logo-text">SHH</span>
+            )}
           </Link>
           <button 
             className="admin-v2-sidebar-toggle"

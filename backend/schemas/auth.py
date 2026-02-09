@@ -76,6 +76,7 @@ class SessionInfo(BaseModel):
     account_id: Optional[int] = None
     auth_level: Optional[str] = None  # "account" | "full" | None
     is_authenticated: bool
+    is_system_admin: bool = False
     requires_full_password: bool = False
     last_activity: Optional[datetime] = None
     last_full_password_login: Optional[datetime] = None

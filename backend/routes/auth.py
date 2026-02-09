@@ -763,6 +763,7 @@ def get_session(
         account_id=account_id,
         auth_level="full",
         is_authenticated=True,
+        is_system_admin=current_user.is_system_admin,
         requires_full_password=current_user.needs_full_password(),
         last_activity=current_user.last_activity,
         last_full_password_login=current_user.last_full_password_login,
