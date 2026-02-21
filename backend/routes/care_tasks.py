@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from db import get_db
+from dependencies import require_read_access
 from models.care_tasks import (
     CareTaskCreate,
     CareTaskUpdate,
@@ -74,7 +75,7 @@ async def api_add_care_task(data: CareTaskCreate, db: Session = Depends(get_db))
 
 
 @router.get("/care-tasks/active")
-async def get_active_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+async def get_active_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all active care tasks, optionally filtered by patient"""
     try:
         # If no patient_id provided, use current patient
@@ -90,7 +91,7 @@ async def get_active_care_tasks_endpoint(patient_id: int = None, db: Session = D
 
 
 @router.get("/care-tasks/inactive")
-async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all inactive care tasks, optionally filtered by patient"""
     try:
         # If no patient_id provided, use current patient
@@ -224,7 +225,7 @@ async def api_add_care_task_schedule(
 
 
 @router.get("/care-tasks/{care_task_id}/schedules")
-async def get_care_task_schedules_endpoint(care_task_id: int, patient_id: int = None, db: Session = Depends(get_db)):
+async def get_care_task_schedules_endpoint(care_task_id: int, patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all schedules for a specific care task"""
     try:
         # If no patient_id provided, use current patient
@@ -240,7 +241,7 @@ async def get_care_task_schedules_endpoint(care_task_id: int, patient_id: int = 
 
 
 @router.get("/care-task-schedules")
-async def get_all_care_task_schedules_endpoint(active_only: bool = True, patient_id: int = None, db: Session = Depends(get_db)):
+async def get_all_care_task_schedules_endpoint(active_only: bool = True, patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all care task schedules, optionally filtered by patient"""
     try:
         schedules = get_all_care_task_schedules(db, active_only, patient_id)
@@ -270,7 +271,7 @@ async def get_daily_care_task_schedule_endpoint(patient_id: int = None, db: Sess
 
 
 @router.get("/care-task-schedules/{schedule_id}")
-async def get_care_task_schedule_endpoint(schedule_id: int, db: Session = Depends(get_db)):
+async def get_care_task_schedule_endpoint(schedule_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get a specific care task schedule"""
     try:
         schedule = get_care_task_schedule(db, schedule_id)
@@ -461,7 +462,7 @@ async def get_admin_active_care_tasks_endpoint(patient_id: int = None, db: Sessi
 
 
 @router.get("/admin/care-tasks/inactive")
-async def get_admin_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+async def get_admin_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get inactive care tasks for admin view - can filter by patient_id or show all"""
     try:
         if patient_id:
@@ -501,7 +502,7 @@ async def api_add_care_task_category(data: CareTaskCategoryCreate, db: Session =
 
 
 @router.get("/care-task-categories")
-async def get_care_task_categories_endpoint(db: Session = Depends(get_db)):
+async def get_care_task_categories_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all care task categories"""
     try:
         categories = get_care_task_categories(db)
@@ -554,14 +555,15 @@ async def delete_care_task_category_endpoint(category_id: int, db: Session = Dep
 @router.get("/care-tasks/history")
 async def get_care_task_history_endpoint(
     patient_id: int = None,
-    task_id: int = None, 
+    task_id: int = None,
     task_name: str = None,
     category_id: int = None,
     status_filter: str = None,
-    limit: int = 50, 
-    start_date: str = None, 
-    end_date: str = None, 
-    db: Session = Depends(get_db)
+    limit: int = 50,
+    start_date: str = None,
+    end_date: str = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """
     Get care task completion history with filtering options
@@ -598,7 +600,7 @@ async def get_care_task_history_endpoint(
 
 
 @router.get("/care-tasks/completions/recent")
-async def get_recent_completions_endpoint(days: int = 7, db: Session = Depends(get_db)):
+async def get_recent_completions_endpoint(days: int = 7, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get recent care task completions"""
     try:
         completions = get_recent_care_task_completions(db, days)
@@ -612,7 +614,7 @@ async def get_recent_completions_endpoint(days: int = 7, db: Session = Depends(g
 
 
 @router.get("/care-tasks/stats/completion")
-async def get_completion_stats_endpoint(days: int = 30, db: Session = Depends(get_db)):
+async def get_completion_stats_endpoint(days: int = 30, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get care task completion statistics"""
     try:
         stats = get_care_task_completion_stats(db, days)
@@ -626,7 +628,7 @@ async def get_completion_stats_endpoint(days: int = 30, db: Session = Depends(ge
 
 
 @router.get("/care-tasks/overdue")
-async def get_overdue_tasks_endpoint(db: Session = Depends(get_db)):
+async def get_overdue_tasks_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get overdue care tasks"""
     try:
         overdue_tasks = get_overdue_care_tasks(db)
@@ -683,7 +685,7 @@ async def validate_cron_expression_endpoint(data: CronValidation):
 
 
 @router.get("/care-task-schedules/{schedule_id}/next-times")
-async def get_next_scheduled_times_endpoint(schedule_id: int, count: int = 5, db: Session = Depends(get_db)):
+async def get_next_scheduled_times_endpoint(schedule_id: int, count: int = 5, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get the next N scheduled times for a specific schedule"""
     try:
         next_times = get_next_scheduled_times(db, schedule_id, count)

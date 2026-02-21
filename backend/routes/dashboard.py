@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from db import get_db
+from dependencies import require_read_access
 from schemas.patient import Patient
 from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
@@ -23,8 +24,26 @@ logger = logging.getLogger("app")
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+@router.get("/patient-readings")
+async def get_patient_readings(_: bool = Depends(require_read_access)):
+    """
+    Return current per-patient sensor readings (spo2, bpm, ts) from connected readers.
+    Used by care dashboard to show live readings on patient cards.
+    """
+    try:
+        from main import get_modules
+        modules = get_modules()
+        ws = modules.get("websocket")
+        if not ws or not hasattr(ws, "patient_readings"):
+            return {}
+        return {str(pid): data for pid, data in ws.patient_readings.items()}
+    except Exception as e:
+        logger.error(f"Error getting patient readings: {e}")
+        return {}
+
+
 @router.get("/summary")
-async def get_dashboard_summary(db: Session = Depends(get_db)):
+async def get_dashboard_summary(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """
     Get dashboard summary data including all patients with their due counts.
     """

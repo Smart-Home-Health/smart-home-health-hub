@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   PatientsIcon,
   MedicationsIcon,
@@ -8,7 +9,7 @@ import {
   EquipmentIcon,
   PlusIcon
 } from '../../components/Icons';
-import { API_BASE_URL } from '../../config';
+import config, { API_BASE_URL } from '../../config';
 import './AdminV2.css';
 
 // Calculate age from DOB
@@ -40,6 +41,7 @@ const getDueStatus = (count) => {
 };
 
 const AdminV2Dashboard = () => {
+  const { hasReadAccess } = useAuth();
   const [patients, setPatients] = useState([]);
   const [summary, setSummary] = useState({
     total_patients: 0,
@@ -50,32 +52,97 @@ const AdminV2Dashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [patientReadings, setPatientReadings] = useState({});
+  const wsRef = useRef(null);
 
   useEffect(() => {
     fetchDashboardData();
+  }, [hasReadAccess]);
+
+  // Per-patient readings: poll on mount and subscribe to WebSocket for live updates
+  useEffect(() => {
+    const fetchReadings = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/dashboard/patient-readings`, { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setPatientReadings(data);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    fetchReadings();
+    const pollInterval = setInterval(fetchReadings, 8000);
+
+    const wsUrl = config.wsUrl || (API_BASE_URL.replace(/^http/, 'ws') + '/ws/sensors');
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'sensor_update' && data.state && data.state.patient_readings) {
+          setPatientReadings(data.state.patient_readings);
+        }
+      } catch (_) {}
+    };
+    ws.onerror = () => {};
+    ws.onclose = () => {};
+
+    return () => {
+      clearInterval(pollInterval);
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch (_) {}
+      }
+    };
   }, []);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/dashboard/summary`, {
-        credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch dashboard data');
-      }
-      
-      const data = await response.json();
-      setPatients(data.patients || []);
-      setSummary(data.summary || {
-        total_patients: 0,
-        active_patients: 0,
-        medications_due: 0,
-        tasks_due: 0,
-        equipment_due: 0
-      });
       setError(null);
+      if (hasReadAccess) {
+        const response = await fetch(`${API_BASE_URL}/api/dashboard/summary`, {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          throw new Error('Failed to fetch dashboard data');
+        }
+        const data = await response.json();
+        setPatients(data.patients || []);
+        setSummary(data.summary || {
+          total_patients: 0,
+          active_patients: 0,
+          medications_due: 0,
+          tasks_due: 0,
+          equipment_due: 0
+        });
+      } else {
+        // Restricted mode: only fetch patient list so user can select who to perform care for
+        const response = await fetch(`${API_BASE_URL}/api/patients?active_only=true`, {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          throw new Error('Failed to fetch patients');
+        }
+        const patientList = await response.json();
+        // Normalize to dashboard shape (name, status, due_counts)
+        const normalized = (patientList || []).map(p => ({
+          ...p,
+          name: p.name || [p.first_name, p.last_name].filter(Boolean).join(' ').trim() || 'Unknown',
+          status: p.status || (p.is_active ? 'active' : 'inactive'),
+          due_counts: p.due_counts || { medications: 0, tasks: 0, equipment: 0 }
+        }));
+        setPatients(normalized);
+        const active = normalized.filter(p => p.is_active);
+        setSummary({
+          total_patients: normalized.length,
+          active_patients: active.length,
+          medications_due: 0,
+          tasks_due: 0,
+          equipment_due: 0
+        });
+      }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
       setError(err.message);
@@ -187,6 +254,15 @@ const AdminV2Dashboard = () => {
                       {patient.room ? ` • ${patient.room}` : ''}
                     </p>
                   </div>
+                  <Link
+                    to="/live"
+                    className="admin-v2-patient-readings"
+                    title="Touch Dashboard"
+                  >
+                    {patientReadings[patient.id]
+                      ? `${patientReadings[patient.id].spo2 ?? '—'}% · ${patientReadings[patient.id].bpm ?? '—'} bpm`
+                      : '— · —'}
+                  </Link>
                   <span className={`admin-v2-patient-status ${patient.status}`}>
                     {patient.status}
                   </span>
@@ -219,7 +295,7 @@ const AdminV2Dashboard = () => {
 
                 {/* Actions */}
                 <div className="admin-v2-patient-actions">
-                  <Link to={`/care/patients/${patient.id}`} className="admin-v2-btn">
+                  <Link to={`/care/profile?patient=${patient.id}`} className="admin-v2-btn">
                     View Details
                   </Link>
                   <Link to={`/care/schedule?patient=${patient.id}`} className="admin-v2-btn admin-v2-btn-primary">

@@ -20,6 +20,7 @@ class SensorUpdate:
     values: Dict[str, Any]           # e.g. {"spo2": 97, "bpm": 88}
     raw: Optional[str] = None
     source: EventSource = EventSource.SERIAL
+    patient_id: Optional[int] = None
 
 @dataclass(frozen=True)
 class NutritionSensorUpdate:
@@ -37,6 +38,7 @@ class AlarmPanelState:
     alarm1: bool
     alarm2: bool
     source: EventSource = EventSource.GPIO
+    patient_id: Optional[int] = None
 
 @dataclass(frozen=True)
 class VitalSignRecorded:

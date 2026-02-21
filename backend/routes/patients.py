@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from db import get_db
+from dependencies import require_read_access
 from crud.patients import (
     get_patient, get_patients, create_patient, update_patient, 
     deactivate_patient, activate_patient, get_active_patient,
@@ -23,15 +24,15 @@ def list_patients(
     active_only: bool = Query(True, description="Filter to active patients only"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Get list of patients"""
+    """Get list of patients. Allowed in restricted mode so user can select a patient to perform care."""
     patients = get_patients(db, active_only=active_only, skip=skip, limit=limit)
     return patients
 
 @router.get("/active", response_model=Optional[PatientResponse])
 def get_current_active_patient(db: Session = Depends(get_db)):
-    """Get the currently active patient"""
+    """Get the currently active patient. Allowed in restricted mode for care flow."""
     patient = get_active_patient(db)
     return patient
 
@@ -60,7 +61,7 @@ def create_new_patient(patient: PatientCreate, db: Session = Depends(get_db)):
     return create_patient(db, patient_data)
 
 @router.get("/{patient_id}", response_model=PatientResponse)
-def get_patient_by_id(patient_id: int, db: Session = Depends(get_db)):
+def get_patient_by_id(patient_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get patient by ID"""
     patient = get_patient(db, patient_id)
     if not patient:

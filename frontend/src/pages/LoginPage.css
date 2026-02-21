@@ -57,6 +57,23 @@
   font-size: 0.9rem;
 }
 
+.login-form-secondary {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.submit-button-secondary {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #a0aec0;
+}
+
+.submit-button-secondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
 /* User Selection */
 .user-selection {
   display: flex;

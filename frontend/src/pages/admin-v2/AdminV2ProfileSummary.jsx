@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, Area, ComposedChart } from 'recharts';
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -31,7 +32,16 @@ const getStatusBadgeClass = (status) => {
 };
 
 const AdminV2ProfileSummary = () => {
-  const { selectedPatient } = useAdminPatient();
+  const [searchParams] = useSearchParams();
+  const { selectedPatient, setPatientId } = useAdminPatient();
+  
+  // Sync URL ?patient= id to active patient (e.g. from dashboard View Details)
+  useEffect(() => {
+    const patientId = searchParams.get('patient');
+    if (patientId) {
+      setPatientId(patientId);
+    }
+  }, [searchParams, setPatientId]);
   
   // State for fetched data
   const [diagnoses, setDiagnoses] = useState([]);

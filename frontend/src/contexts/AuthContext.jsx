@@ -16,7 +16,8 @@ export const AuthProvider = ({ children }) => {
   const [account, setAccount] = useState(null);  // Layer 1: Account
   const [user, setUser] = useState(null);         // Layer 2: User
   const [authLevel, setAuthLevel] = useState(null); // "account" | "full" | null
-  
+  const [readRestricted, setReadRestricted] = useState(false); // true = add/chart only, no read
+
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -47,7 +48,8 @@ export const AuthProvider = ({ children }) => {
 
       if (sessionRes.ok) {
         const sessionData = await sessionRes.json();
-        
+        setReadRestricted(!!sessionData.read_restricted);
+
         // Determine auth level from session
         if (sessionData.user_id) {
           // Full auth - both account and user
@@ -85,6 +87,7 @@ export const AuthProvider = ({ children }) => {
         setAccount(null);
         setUser(null);
         setAuthLevel(null);
+        setReadRestricted(false);
         setShowAuthModal(true);
       }
     } catch (error) {
@@ -92,6 +95,7 @@ export const AuthProvider = ({ children }) => {
       setAccount(null);
       setUser(null);
       setAuthLevel(null);
+      setReadRestricted(false);
       setShowAuthModal(true);
     } finally {
       setLoading(false);
@@ -122,9 +126,64 @@ export const AuthProvider = ({ children }) => {
       setAccount(data.account);
       setAuthLevel('account');
       setUser(null); // Clear any previous user
+      setReadRestricted(!!data.read_restricted);
       setShowAuthModal(false);
-      
+
       return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Account access: password only (single account). Omit password for restricted (add/chart only).
+  const accountAccess = async (password = null) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/account/access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ password: password && password.trim() ? password : null })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Account access failed');
+      }
+
+      const data = await res.json();
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      setAccount(data.account);
+      setAuthLevel('account');
+      setUser(null);
+      setReadRestricted(!!data.read_restricted);
+      setShowAuthModal(false);
+
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Unlock read access with account password (when already in restricted session)
+  const unlockWithAccountPassword = async (password) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/account/unlock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ password })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Invalid account password');
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setReadRestricted(false);
+      await checkFirstRunAndSession();
+      return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -177,7 +236,7 @@ export const AuthProvider = ({ children }) => {
       // Small delay to ensure cookie is fully set
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Set full auth
+      // Set full auth (include read_restricted from backend)
       setAccount(data.account);
       setUser({
         id: data.user.id,
@@ -188,8 +247,9 @@ export const AuthProvider = ({ children }) => {
         permissions: data.user.permissions || []
       });
       setAuthLevel('full');
+      setReadRestricted(!!data.read_restricted);
       setShowAuthModal(false);
-      
+
       return { success: true, data };
     } catch (error) {
       return { success: false, error: error.message };
@@ -292,6 +352,7 @@ export const AuthProvider = ({ children }) => {
       setAccount(null);
       setUser(null);
       setAuthLevel(null);
+      setReadRestricted(false);
       setShowAuthModal(true);
     }
   };
@@ -334,23 +395,27 @@ export const AuthProvider = ({ children }) => {
     account,
     user,
     authLevel,
-    
+    readRestricted,
+    hasReadAccess: !readRestricted,
+
     // Computed properties
     isAuthenticated: authLevel === 'full',
     isAccountAuthenticated: authLevel === 'account' || authLevel === 'full',
-    
+
     // Legacy compatibility
     isFirstRun,
     loading,
     showAuthModal,
     setShowAuthModal,
-    
+
     // Two-layer auth methods
     accountLogin,
+    accountAccess,
+    unlockWithAccountPassword,
     getAccountUsers,
     selectUser,
     switchUser,
-    
+
     // Legacy methods (still work, give full auth)
     login,
     verifyPin,

@@ -492,13 +492,14 @@ def save_pulse_ox_batch(db: Session, data_points):
         return False
 
 
-def get_pulse_ox_data_by_date(db: Session, date_str):
+def get_pulse_ox_data_by_date(db: Session, date_str, patient_id=None):
     """
     Get all pulse ox data for a specific date
 
     Args:
         db (Session): Database session
         date_str (str): Date string in YYYY-MM-DD format
+        patient_id (int, optional): If set, filter to this patient only
 
     Returns:
         list: List of pulse ox readings for the date
@@ -510,10 +511,13 @@ def get_pulse_ox_data_by_date(db: Session, date_str):
         start_datetime = datetime.combine(date_obj, time.min)
         end_datetime = datetime.combine(date_obj, time.max)
         
-        data = db.query(PulseOxData).filter(
+        query = db.query(PulseOxData).filter(
             PulseOxData.timestamp >= start_datetime,
             PulseOxData.timestamp <= end_datetime
-        ).order_by(PulseOxData.timestamp.asc()).all()
+        )
+        if patient_id is not None:
+            query = query.filter(PulseOxData.patient_id == patient_id)
+        data = query.order_by(PulseOxData.timestamp.asc()).all()
         
         return data
     except Exception as e:
@@ -521,19 +525,20 @@ def get_pulse_ox_data_by_date(db: Session, date_str):
         return []
 
 
-def analyze_pulse_ox_day(db: Session, date_str):
+def analyze_pulse_ox_day(db: Session, date_str, patient_id=None):
     """
     Analyze pulse ox data for a specific day and return SpO2 distribution
 
     Args:
         db (Session): Database session
         date_str (str): Date string in YYYY-MM-DD format
+        patient_id (int, optional): If set, restrict to this patient only
 
     Returns:
         dict: Analysis results including time logged, SpO2 distribution, etc.
     """
     try:
-        data = get_pulse_ox_data_by_date(db, date_str)
+        data = get_pulse_ox_data_by_date(db, date_str, patient_id=patient_id)
         
         if not data:
             return {

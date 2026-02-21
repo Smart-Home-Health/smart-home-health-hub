@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date
 from datetime import datetime, timedelta
 from db import get_db
+from dependencies import require_read_access
 from crud.vitals import (get_vitals_by_type, get_distinct_vital_types, get_vitals_by_type_paginated, 
                   save_blood_pressure, save_temperature, save_vital, 
                   save_blood_pressure_as_vitals, save_temperature_as_vitals)
@@ -36,7 +37,8 @@ router = APIRouter(prefix="/api/vitals", tags=["vitals"])
 async def get_vitals_summary(
     patient_id: int,
     days: int = Query(30, ge=1, le=90, description="Number of days to aggregate"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """
     Get aggregated vitals summary for charts (daily min/avg/max).
@@ -315,19 +317,20 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/types")
-def get_vital_types(db: Session = Depends(get_db)):
+def get_vital_types(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get a distinct list of vital_type values from the vitals table"""
     return get_distinct_vital_types(db)
 
 
 @router.get("/patient/{patient_id}")
 def get_patient_vitals(
-    patient_id: int, 
-    vital_type: str = None, 
-    start_date: str = None, 
+    patient_id: int,
+    vital_type: str = None,
+    start_date: str = None,
     end_date: str = None,
-    limit: int = 100, 
-    db: Session = Depends(get_db)
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get all vitals for a specific patient with optional filtering"""
     from schemas.vital import Vital
@@ -417,11 +420,11 @@ def get_nutrition_history(limit: int = 100, db: Session = Depends(get_db)):
 
 
 @router.get("/history")
-def get_vital_history_paginated(vital_type: str, page: int = 1, page_size: int = 20, db: Session = Depends(get_db)):
+def get_vital_history_paginated(vital_type: str, page: int = 1, page_size: int = 20, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get paginated history for a specific vital type"""
     return get_vitals_by_type_paginated(db, vital_type, page, page_size)
 
 
 @router.get("/{vital_type}")
-def get_vital_history(vital_type: str, limit: int = 100, db: Session = Depends(get_db)):
+def get_vital_history(vital_type: str, limit: int = 100, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     return get_vitals_by_type(db, vital_type, limit)

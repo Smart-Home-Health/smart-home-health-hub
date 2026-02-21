@@ -62,11 +62,12 @@ def parse_scheduled_time(scheduled_time_str: str) -> datetime:
 async def get_daily_schedule(
     target_date: str = Query(None, description="Date in YYYY-MM-DD format, defaults to today"),
     patient_id: int = Query(..., description="Patient ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get the complete daily schedule for a patient, organized by hour.
     Returns medications, nutrition schedules, and care tasks with completion status.
+    Allowed in restricted mode so user can see what to complete and perform care.
     """
     try:
         # Parse target date

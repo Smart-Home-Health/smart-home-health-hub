@@ -27,6 +27,8 @@ class WebSocketModule:
         
         # Current state cache for new client synchronization
         self.current_state = {}
+        # Per-patient latest readings (patient_id -> { spo2, bpm, ts, ... }) for care dashboard
+        self.patient_readings: Dict[int, Dict[str, Any]] = {}
         
     async def start_event_subscribers(self):
         """Start subscribing to relevant events."""
@@ -47,7 +49,13 @@ class WebSocketModule:
             try:
                 # Update current state cache
                 self.current_state.update(event.values)
-                
+                # Per-patient readings for care dashboard
+                pid = getattr(event, 'patient_id', None)
+                if pid is not None:
+                    self.patient_readings[pid] = {
+                        **event.values,
+                        'ts': event.ts.isoformat(),
+                    }
                 # Broadcast to all connected clients
                 await self._broadcast_sensor_update(event)
                 
@@ -61,6 +69,11 @@ class WebSocketModule:
                 # Update current state cache
                 self.current_state['alarm1'] = event.alarm1
                 self.current_state['alarm2'] = event.alarm2
+                # Per-patient alarm state for care dashboard
+                pid = getattr(event, 'patient_id', None)
+                if pid is not None and pid in self.patient_readings:
+                    self.patient_readings[pid]['alarm1'] = event.alarm1
+                    self.patient_readings[pid]['alarm2'] = event.alarm2
                 
                 # Broadcast to all connected clients
                 await self._broadcast_alarm_update(event)
@@ -357,6 +370,10 @@ class WebSocketModule:
                 state['spo2_alarm'] or
                 state['bpm_alarm']
             )
+            # Per-patient readings for care dashboard (keys as strings for JSON)
+            state['patient_readings'] = {
+                str(pid): data for pid, data in self.patient_readings.items()
+            }
             
             logger.debug(f"Built full state with {len(state)} keys")
             return state
@@ -384,7 +401,8 @@ class WebSocketModule:
                 'bpm_alarm': False,
                 'alarm': False,
                 'dashboard_chart_1': {'vital_type': 'blood_pressure', 'data': []},
-                'dashboard_chart_2': {'vital_type': 'temperature', 'data': []}
+                'dashboard_chart_2': {'vital_type': 'temperature', 'data': []},
+                'patient_readings': {},
             })
             
             return minimal_state

@@ -12,6 +12,11 @@ class AccountLoginRequest(BaseModel):
     password: str
 
 
+class AccountAccessRequest(BaseModel):
+    """Account access request - password only (single account). Optional password = restricted mode."""
+    password: Optional[str] = Field(None, description="Account password; omit for add/chart-only (restricted) access")
+
+
 class AccountLoginResponse(BaseModel):
     """Account login response - returns account-level token"""
     access_token: str
@@ -19,6 +24,7 @@ class AccountLoginResponse(BaseModel):
     auth_level: str = "account"
     account: dict
     message: str = "Account authenticated. Please select a user profile."
+    read_restricted: bool = False
 
 
 class UserSelectRequest(BaseModel):
@@ -36,6 +42,7 @@ class UserSelectResponse(BaseModel):
     account: dict
     user: dict
     requires_full_password: bool = False
+    read_restricted: bool = False
 
 
 class AccountUserItem(BaseModel):
@@ -69,6 +76,18 @@ class TokenResponse(BaseModel):
     account_slug: Optional[str] = None  # Returned after first-run setup so user knows their login
 
 
+class AccountUnlockRequest(BaseModel):
+    """Request to unlock read access with account password"""
+    password: str = Field(..., description="Account password")
+
+
+class AccountUnlockResponse(BaseModel):
+    """Response after successful unlock"""
+    success: bool = True
+    read_restricted: bool = False
+    message: str = "Read access unlocked"
+
+
 class SessionInfo(BaseModel):
     """Current session information"""
     user_id: Optional[int] = None
@@ -79,6 +98,7 @@ class SessionInfo(BaseModel):
     is_authenticated: bool
     is_system_admin: bool = False
     requires_full_password: bool = False
+    read_restricted: bool = False  # True = add/chart only; account password required to view data
     last_activity: Optional[datetime] = None
     last_full_password_login: Optional[datetime] = None
     roles: list[str] = []

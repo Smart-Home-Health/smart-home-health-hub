@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from db import get_db
+from dependencies import require_read_access
 from models.medications import (
     MedicationCreate,
     MedicationUpdate,
@@ -82,20 +83,20 @@ async def api_add_medication(data: MedicationCreate, db: Session = Depends(get_d
 
 
 @router.get("/medications/active", response_model=List[dict])
-async def get_active_medications_endpoint(db: Session = Depends(get_db)):
+async def get_active_medications_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all active medications."""
     return get_active_medications(db)
 
 
 @router.get("/medications/inactive", response_model=List[dict])
-async def get_inactive_medications_endpoint(db: Session = Depends(get_db)):
+async def get_inactive_medications_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all inactive medications."""
     return get_inactive_medications(db)
 
 
 # Admin-specific endpoints with patient filtering
 @router.get("/admin/medications/active")
-async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get active medications for admin view - can filter by patient_id or show all"""
     from schemas.medication_log import MedicationLog
     from sqlalchemy import func
@@ -164,7 +165,7 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
 
 
 @router.get("/admin/medications/inactive")
-async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get inactive medications for admin view - can filter by patient_id or show all"""
     try:
         today = datetime.now().date()
@@ -306,7 +307,7 @@ async def api_add_medication_schedule(
 
 
 @router.get("/medications/{medication_id}/schedules")
-async def get_medication_schedules_endpoint(medication_id: int, db: Session = Depends(get_db)):
+async def get_medication_schedules_endpoint(medication_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all schedules for a specific medication."""
     # Verify medication exists
     medication = db.query(Medication).filter(Medication.id == medication_id).first()
@@ -318,7 +319,7 @@ async def get_medication_schedules_endpoint(medication_id: int, db: Session = De
 
 
 @router.get("/schedules")
-async def get_all_medication_schedules_endpoint(active_only: bool = True, db: Session = Depends(get_db)):
+async def get_all_medication_schedules_endpoint(active_only: bool = True, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all medication schedules, optionally filtering by active status."""
     schedules = get_all_medication_schedules(db, active_only)
     return {"schedules": schedules}
@@ -362,7 +363,7 @@ async def toggle_medication_schedule_active_endpoint(schedule_id: int, db: Sessi
 
 
 @router.get("/schedules/daily")
-async def get_daily_medication_schedule_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+async def get_daily_medication_schedule_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get today's scheduled medications plus yesterday's missed medications."""
     try:
         daily_schedule = get_daily_medication_schedule(db, patient_id=patient_id)
@@ -384,7 +385,8 @@ async def get_medication_history_endpoint(
     end_date: Optional[str] = None,
     status_filter: Optional[str] = None,
     patient_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """
     Get medication administration history with filtering options
@@ -417,7 +419,7 @@ async def get_medication_history_endpoint(
 
 
 @router.get("/medications/names")
-async def get_medication_names_endpoint(db: Session = Depends(get_db)):
+async def get_medication_names_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """
     Get all medication names for dropdown selection
     Returns active medications first, then inactive ones with indicators
@@ -434,7 +436,7 @@ async def get_medication_names_endpoint(db: Session = Depends(get_db)):
 
 
 @router.get("/medications/providers")
-async def get_providers_for_medication(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+async def get_providers_for_medication(patient_id: Optional[int] = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get providers that can prescribe medications for the given patient or all providers"""
     from models import Provider
     try:
@@ -468,7 +470,7 @@ async def get_providers_for_medication(patient_id: Optional[int] = None, db: Ses
 
 
 @router.get("/medications/pharmacies")
-async def get_pharmacies_for_medication(db: Session = Depends(get_db)):
+async def get_pharmacies_for_medication(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get businesses that are pharmacies"""
     from models import Business
     from schemas.business import BusinessTypeAssignment

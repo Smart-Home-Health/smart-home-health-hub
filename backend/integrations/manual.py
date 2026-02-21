@@ -2,15 +2,13 @@
 Manual integration for local device data and manual entry.
 
 This is the default integration that handles:
-- Serial-connected devices (pulse oximeters, temp sensors)
 - Manual vital entry via the UI
-- Local GPIO/sensor data
 
 It doesn't require external authentication and data flows in real-time
 through the WebSocket/MQTT system rather than periodic syncing.
 
-Note: Network-connected SHH devices (like SHH Pulse Oximeter readers)
-are handled through the readers module, not this integration.
+Note: Serial and GPIO devices are provided by the external shh-reader app;
+they connect via the readers module (pairing + WebSocket), not this integration.
 """
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -28,13 +26,11 @@ from .registry import register
 @register
 class ManualIntegration(BaseIntegration):
     """
-    Integration for manually entered data and local SHH devices.
+    Integration for manually entered data.
     
     This integration is always available and doesn't require setup.
-    It serves as the source for:
-    - Manual vital entries from caregivers
-    - Real-time data from serial-connected devices
-    - Local sensor readings (GPIO, etc.)
+    It serves as the source for manual vital entries from caregivers.
+    Serial/GPIO sensor data is provided by the external shh-reader app via the readers API.
     """
     
     slug = "manual"
@@ -79,19 +75,10 @@ class ManualIntegration(BaseIntegration):
         """
         Return info about locally connected devices.
         
-        This could be expanded to query the serial module for
-        connected devices and their status.
+        Serial/GPIO devices are provided by the external shh-reader app;
+        they are managed and listed under the readers API, not here.
         """
-        # TODO: Query serial_module for actual connected devices
-        return [
-            DeviceInfo(
-                device_id="shh-serial-primary",
-                device_type="pulse_oximeter",
-                device_name="Primary Serial Sensor",
-                device_model="SHH Serial Device",
-                last_seen_at=datetime.utcnow(),
-            ),
-        ]
+        return []
     
     async def sync_data(
         self,
@@ -101,7 +88,7 @@ class ManualIntegration(BaseIntegration):
         """
         Manual integration doesn't sync - data flows in real-time.
         
-        Data from serial devices is pushed via WebSocket/MQTT as it arrives.
+        Data from reader devices (serial/GPIO) is pushed via the readers WebSocket.
         Manual entries are saved directly to the database.
         This method exists only for API compatibility.
         """

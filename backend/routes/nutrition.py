@@ -4,6 +4,7 @@ from datetime import datetime, date
 from typing import List, Optional
 import logging
 from db import get_db
+from dependencies import require_read_access
 from crud.nutrition import (
     create_nutrition_intake, 
     get_nutrition_intake_by_id,
@@ -92,7 +93,8 @@ async def create_nutrition_intake_endpoint(
 @router.get("/nutrition-intake/{intake_id}", response_model=NutritionIntakeResponse)
 async def get_nutrition_intake_endpoint(
     intake_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get a specific nutrition intake record"""
     intake = get_nutrition_intake_by_id(db, intake_id)
@@ -104,7 +106,8 @@ async def get_nutrition_intake_endpoint(
 async def get_patient_nutrition_intake_endpoint(
     patient_id: int,
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition intake records for a patient"""
     intake_records = get_patient_nutrition_intake(db, patient_id, limit)
@@ -114,7 +117,8 @@ async def get_patient_nutrition_intake_endpoint(
 async def get_daily_nutrition_intake_endpoint(
     patient_id: int,
     target_date: Optional[date] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition intake records for a specific day"""
     intake_records = get_daily_nutrition_intake(db, patient_id, target_date)
@@ -127,7 +131,8 @@ async def get_daily_nutrition_intake_endpoint(
 async def get_nutrition_summary_endpoint(
     patient_id: int,
     target_date: Optional[date] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get daily nutrition summary with totals"""
     summary = get_nutrition_summary(db, patient_id, target_date)
@@ -139,7 +144,8 @@ async def get_nutrition_summary_endpoint(
 @router.get("/nutrition-intake/active-patient")
 async def get_active_patient_nutrition_endpoint(
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition intake records for the active patient"""
     active_patient = get_active_patient(db)
@@ -155,7 +161,8 @@ async def get_active_patient_nutrition_endpoint(
 @router.get("/nutrition-summary/active-patient")
 async def get_active_patient_nutrition_summary_endpoint(
     target_date: Optional[date] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition summary for the active patient"""
     active_patient = get_active_patient(db)
@@ -204,7 +211,8 @@ async def delete_nutrition_intake_endpoint(
 @router.get("/care-task-logs/{care_task_log_id}/nutrition-intake", response_model=List[NutritionIntakeResponse])
 async def get_care_task_nutrition_intake_endpoint(
     care_task_log_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition intake records linked to a specific care task completion"""
     intake_records = get_nutrition_intake_for_care_task(db, care_task_log_id)
@@ -212,7 +220,7 @@ async def get_care_task_nutrition_intake_endpoint(
 
 # Common nutrition items/presets for quick entry
 @router.get("/nutrition-presets")
-async def get_nutrition_presets():
+async def get_nutrition_presets(_: bool = Depends(require_read_access)):
     """Get common nutrition items for quick entry"""
     return {
         "liquids": [
@@ -432,7 +440,7 @@ async def get_nutrition_dashboard_data(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/nutrition/has-data")
-async def check_nutrition_data(db: Session = Depends(get_db)):
+async def check_nutrition_data(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Check if there is any nutrition data in the database"""
     try:
         from models import NutritionIntake
@@ -477,22 +485,23 @@ async def create_goal(goal_data: NutritionGoalCreate, db: Session = Depends(get_
 
 @router.get("/nutrition/goals/patient/{patient_id}", response_model=List[NutritionGoalResponse])
 async def get_goals_for_patient(
-    patient_id: int, 
+    patient_id: int,
     active_only: bool = True,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get all nutrition goals for a patient"""
     return get_patient_nutrition_goals(db, patient_id, active_only)
 
 
 @router.get("/nutrition/goals/patient/{patient_id}/current", response_model=Optional[NutritionGoalResponse])
-async def get_current_goal(patient_id: int, db: Session = Depends(get_db)):
+async def get_current_goal(patient_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get the current active nutrition goal for a patient"""
     return get_current_nutrition_goal(db, patient_id)
 
 
 @router.get("/nutrition/goals/{goal_id}", response_model=NutritionGoalResponse)
-async def get_goal(goal_id: int, db: Session = Depends(get_db)):
+async def get_goal(goal_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get a specific nutrition goal"""
     goal = get_nutrition_goal_by_id(db, goal_id)
     if not goal:
@@ -521,7 +530,8 @@ async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
 async def get_nutrition_intake_summary(
     patient_id: int,
     days: int = 30,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """
     Get daily nutrition summary for a patient over specified days.
@@ -679,7 +689,8 @@ async def get_outputs_for_patient(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get output logs for a patient"""
     return get_patient_nutrition_outputs(db, patient_id, output_type, start_date, end_date, limit)
@@ -689,7 +700,8 @@ async def get_outputs_for_patient(
 async def get_daily_outputs(
     patient_id: int,
     target_date: Optional[date] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get output logs for a specific day"""
     outputs = get_daily_nutrition_outputs(db, patient_id, target_date)
@@ -700,7 +712,8 @@ async def get_daily_outputs(
 async def get_patient_output_summary(
     patient_id: int,
     target_date: Optional[date] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get output summary for a patient for a specific day"""
     return get_output_summary(db, patient_id, target_date)
@@ -710,7 +723,8 @@ async def get_patient_output_summary(
 async def get_output_history_summary(
     patient_id: int,
     days: int = 30,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """
     Get daily output summary for a patient over specified days.
@@ -808,7 +822,7 @@ async def get_output_history_summary(
 
 
 @router.get("/nutrition/outputs/{output_id}", response_model=NutritionOutputResponse)
-async def get_output(output_id: int, db: Session = Depends(get_db)):
+async def get_output(output_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get a specific output log"""
     output = get_nutrition_output_by_id(db, output_id)
     if not output:
@@ -838,7 +852,7 @@ async def delete_output(output_id: int, db: Session = Depends(get_db)):
 # =============================================
 
 @router.get("/nutrition/schedules/types")
-async def get_schedule_types():
+async def get_schedule_types(_: bool = Depends(require_read_access)):
     """Get available schedule types"""
     return {"schedule_types": SCHEDULE_TYPES}
 
@@ -866,7 +880,7 @@ async def get_schedules_for_patient(
 
 
 @router.get("/nutrition/schedules/{schedule_id}", response_model=NutritionScheduleResponse)
-async def get_schedule(schedule_id: int, db: Session = Depends(get_db)):
+async def get_schedule(schedule_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get a specific nutrition schedule"""
     schedule = get_nutrition_schedule_by_id(db, schedule_id)
     if not schedule:

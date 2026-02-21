@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from dependencies import get_db
+from db import get_db
+from dependencies import require_read_access
 from crud import dme_shipments as crud
 
 logger = logging.getLogger('app')
@@ -147,7 +148,8 @@ async def list_shipments(
     is_backorder: Optional[bool] = None,
     skip: int = 0,
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """List shipments with optional filters"""
     try:
@@ -169,7 +171,8 @@ async def list_shipments(
 @router.get("/backorders")
 async def get_pending_backorders(
     patient_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get all pending backorder shipments"""
     try:
@@ -204,7 +207,8 @@ async def get_alerts(
 @router.get("/{shipment_id}")
 async def get_shipment(
     shipment_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get a specific shipment with all items and receipts"""
     try:
@@ -443,7 +447,8 @@ async def receive_items(
 async def get_item_receipts(
     shipment_id: int,
     item_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get all receipts for a specific item"""
     try:
@@ -485,7 +490,8 @@ async def finalize_shipment(
 @router.get("/{shipment_id}/alerts")
 async def get_shipment_alerts(
     shipment_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get all alerts for a shipment"""
     try:

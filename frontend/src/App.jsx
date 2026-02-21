@@ -41,6 +41,7 @@ import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
 import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
+import AdminV2Monitoring from './pages/admin-v2/AdminV2Monitoring';
 import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
 import AdminV2Integrations from './pages/admin-v2/AdminV2Integrations';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
@@ -140,6 +141,11 @@ function AppContent() {
           <Route path="/care/profile/diagnoses" element={<ProtectedRoute><Layout><AdminV2Diagnoses /></Layout></ProtectedRoute>} />
           <Route path="/care/profile/implants" element={<ProtectedRoute><Layout><AdminV2Implants /></Layout></ProtectedRoute>} />
           <Route path="/care/profile/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
+            
+          {/* Care Monitoring Routes */}
+          <Route path="/care/monitoring" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
+          <Route path="/care/monitoring/history" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
+          <Route path="/care/monitoring/settings" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
             
           {/* Care Configuration Routes (System-wide) */}
           <Route path="/care/configuration" element={<ProtectedRoute><Layout><AdminV2SettingsGeneral /></Layout></ProtectedRoute>} />

@@ -16,7 +16,9 @@ from db import get_db
 from schemas.auth import (
     LoginRequest, PinVerifyRequest, TokenResponse, SessionInfo,
     FirstRunSetup, FirstRunStatus,
-    AccountLoginRequest, AccountLoginResponse, UserSelectRequest, UserSelectResponse, AccountUserItem
+    AccountLoginRequest, AccountLoginResponse, AccountAccessRequest,
+    AccountUnlockRequest, AccountUnlockResponse,
+    UserSelectRequest, UserSelectResponse, AccountUserItem
 )
 from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem
 from crud.users import (
@@ -29,7 +31,7 @@ from crud.users import (
     remove_role_from_user
 )
 from schemas.patient import Patient
-from dependencies import get_current_user, require_permission, get_current_account_id, get_current_account, require_full_auth
+from dependencies import get_current_user, require_permission, get_current_account_id, get_current_account, require_full_auth, require_read_access
 from models.users import User, Account
 import bcrypt
 
@@ -43,23 +45,26 @@ SESSION_TIMEOUT_MINUTES = 30
 
 
 def create_access_token(
-    user: User = None, 
+    user: User = None,
     account: Account = None,
     is_full_password: bool = False,
-    auth_level: str = "full"
+    auth_level: str = "full",
+    read_restricted: bool = False
 ) -> str:
     """
     Create JWT access token.
-    
+
     For account-level auth (auth_level="account"):
         - Only account_id is required
         - user_id will be None
-        
+
     For full auth (auth_level="full"):
         - Both account_id and user_id are included
+
+    read_restricted: when True, session can only add/chart; cannot read sensitive data.
     """
     expire = datetime.utcnow() + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
-    
+
     payload = {
         "account_id": account.id if account else (user.account_id if user else None),
         "user_id": user.id if user and auth_level == "full" else None,
@@ -67,9 +72,10 @@ def create_access_token(
         "role": user.roles[0].name if user and user.roles else None,
         "auth_level": auth_level,
         "exp": expire,
-        "is_full_password": is_full_password
+        "is_full_password": is_full_password,
+        "read_restricted": read_restricted,
     }
-    
+
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -297,8 +303,8 @@ def account_login(
             detail="Invalid account credentials"
         )
     
-    # Create account-level token
-    token = create_access_token(account=account, auth_level="account")
+    # Create account-level token (with password = full read access)
+    token = create_access_token(account=account, auth_level="account", read_restricted=False)
     
     # Set httpOnly cookie
     response.set_cookie(
@@ -328,7 +334,77 @@ def account_login(
             "id": account.id,
             "name": account.name,
             "slug": account.slug
-        }
+        },
+        read_restricted=False
+    )
+
+
+@router.post("/account/access", response_model=AccountLoginResponse)
+def account_access(
+    body: AccountAccessRequest,
+    response: Response,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Account access with optional password (single-account flow).
+    - No password or empty: issue account token with read_restricted=True (add/chart only).
+    - Valid password: issue account token with read_restricted=False (full read access).
+    Uses the default (or only) account; no slug required.
+    """
+    account = db.query(Account).filter(Account.is_default == True, Account.is_active == True).first()
+    if not account:
+        account = db.query(Account).filter(Account.is_active == True).first()
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account available"
+        )
+
+    password_provided = body.password and body.password.strip()
+    read_restricted = True
+
+    if password_provided:
+        if not bcrypt.checkpw(body.password.encode("utf-8"), account.password_hash.encode("utf-8")):
+            create_audit_log(
+                db,
+                user_id=None,
+                action="account.access.failed",
+                details=json.dumps({"account_id": account.id, "reason": "invalid_password"}),
+                ip_address=get_client_ip(request),
+                user_agent=request.headers.get("User-Agent"),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid account credentials"
+            )
+        read_restricted = False
+
+    token = create_access_token(account=account, auth_level="account", read_restricted=read_restricted)
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        httponly=True,
+        max_age=SESSION_TIMEOUT_MINUTES * 60,
+        samesite="none",
+        secure=False,
+    )
+    create_audit_log(
+        db,
+        user_id=None,
+        action="account.access.success",
+        details=json.dumps({
+            "account_id": account.id,
+            "read_restricted": read_restricted,
+        }),
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+    )
+    return AccountLoginResponse(
+        access_token=token,
+        account={"id": account.id, "name": account.name, "slug": account.slug},
+        read_restricted=read_restricted,
+        message="Account authenticated. Please select a user profile." if not read_restricted else "Restricted mode. Select a user to log or record only.",
     )
 
 
@@ -360,6 +436,65 @@ def get_account_users(
         )
         for user in users
     ]
+
+
+@router.post("/account/unlock", response_model=AccountUnlockResponse)
+def account_unlock(
+    body: AccountUnlockRequest,
+    response: Response,
+    request: Request,
+    db: Session = Depends(get_db),
+    account_id: int = Depends(get_current_account_id),
+):
+    """
+    Unlock read access by verifying account password.
+    Re-issues the current token with read_restricted=False.
+    Requires an existing session (account-level or full).
+    """
+    account = db.query(Account).filter(Account.id == account_id, Account.is_active == True).first()
+    if not account:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account not found")
+
+    if not bcrypt.checkpw(body.password.encode("utf-8"), account.password_hash.encode("utf-8")):
+        create_audit_log(
+            db,
+            user_id=getattr(request.state, "user_id", None),
+            action="account.unlock.failed",
+            details=json.dumps({"account_id": account_id, "reason": "invalid_password"}),
+            ip_address=get_client_ip(request),
+            user_agent=request.headers.get("User-Agent"),
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid account password")
+
+    user_id = getattr(request.state, "user_id", None)
+    auth_level = getattr(request.state, "auth_level", "account")
+    user = get_user_by_id(db, user_id) if user_id else None
+    is_full_password = getattr(request.state, "is_full_password", False) if user else False
+
+    token = create_access_token(
+        user=user,
+        account=account,
+        is_full_password=is_full_password,
+        auth_level=auth_level,
+        read_restricted=False,
+    )
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        httponly=True,
+        max_age=SESSION_TIMEOUT_MINUTES * 60,
+        samesite="none",
+        secure=False,
+    )
+    create_audit_log(
+        db,
+        user_id=user_id,
+        action="account.unlock.success",
+        details=json.dumps({"account_id": account_id}),
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+    )
+    return AccountUnlockResponse(success=True, read_restricted=False, message="Read access unlocked")
 
 
 @router.post("/user/select", response_model=UserSelectResponse)
@@ -467,9 +602,15 @@ def select_user(
     
     # Get account for response
     account = db.query(Account).filter(Account.id == account_id).first()
-    
+
+    # Inherit read_restricted from current account token (set by middleware)
+    read_restricted = getattr(request.state, "read_restricted", False)
+
     # Create full auth token
-    token = create_access_token(user=user, account=account, is_full_password=is_full_password, auth_level="full")
+    token = create_access_token(
+        user=user, account=account, is_full_password=is_full_password,
+        auth_level="full", read_restricted=read_restricted
+    )
     
     # Set httpOnly cookie
     response.set_cookie(
@@ -509,7 +650,8 @@ def select_user(
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
             "permissions": [p.name for r in user.roles for p in r.permissions]
         },
-        requires_full_password=False
+        requires_full_password=False,
+        read_restricted=read_restricted
     )
 
 
@@ -786,7 +928,8 @@ def get_session(
         account_id = payload.get("account_id")
         user_id = payload.get("user_id")
         auth_level = payload.get("auth_level")
-        
+        read_restricted = payload.get("read_restricted", False)
+
     except jwt.InvalidTokenError:
         return SessionInfo(is_authenticated=False)
     
@@ -799,7 +942,8 @@ def get_session(
         return SessionInfo(
             account_id=account_id,
             auth_level="account",
-            is_authenticated=False  # Not fully authenticated until user is selected
+            is_authenticated=False,  # Not fully authenticated until user is selected
+            read_restricted=read_restricted
         )
     
     # Full auth - get user details
@@ -834,6 +978,7 @@ def get_session(
         is_authenticated=True,
         is_system_admin=current_user.is_system_admin,
         requires_full_password=current_user.needs_full_password(),
+        read_restricted=read_restricted,
         last_activity=current_user.last_activity,
         last_full_password_login=current_user.last_full_password_login,
         roles=[role.name for role in current_user.roles if role.is_active],
@@ -860,7 +1005,8 @@ def check_permission(
 @router.get("/users", response_model=List[UserListItem])
 def list_users(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get list of all users (requires authentication)"""
     users = get_all_users(db)
@@ -886,7 +1032,8 @@ def list_users(
 def get_user(
     user_id: int,
     current_user: User = Depends(require_permission("users.view")),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get user by ID (requires users.view permission)"""
     user = get_user_by_id(db, user_id)

@@ -8,7 +8,7 @@ from typing import Optional
 import bcrypt
 
 from db import get_db
-from dependencies import get_current_account_id, get_current_account, require_full_auth
+from dependencies import get_current_account_id, get_current_account, require_full_auth, require_read_access
 from models.users import Account
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -46,7 +46,8 @@ class PasswordChangeRequest(BaseModel):
 @router.get("", response_model=AccountResponse)
 def get_account(
     account: Account = Depends(get_current_account),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """
     Get current account details.

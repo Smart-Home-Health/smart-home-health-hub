@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import MqttSettings from './settings/MqttSettings';
-import GpioSettings from './settings/GpioSettings';
-import SerialSettings from './settings/SerialSettings';
 import DashboardSettings from './settings/DashboardSettings';
 import PatientSettings from './settings/PatientSettings';
 import ThresholdSettings from './settings/ThresholdSettings';
@@ -176,36 +174,6 @@ const SettingsForm = ({ onClose }) => {
               }}
             >
               Thresholds
-            </button>
-            <button
-              onClick={() => setActiveTab('gpio')}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: activeTab === 'gpio' ? '#007bff' : '#f8f9fa',
-                color: activeTab === 'gpio' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '14px'
-              }}
-            >
-              GPIO
-            </button>
-            <button
-              onClick={() => setActiveTab('serial')}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: activeTab === 'serial' ? '#007bff' : '#f8f9fa',
-                color: activeTab === 'serial' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '14px'
-              }}
-            >
-              Serial
             </button>
             <button
               onClick={() => setActiveTab('mqtt')}
@@ -459,12 +427,6 @@ const SettingsForm = ({ onClose }) => {
           {activeTab === 'thresholds' && (
             <ThresholdSettings />
           )}
-          {activeTab === 'gpio' && (
-            <GpioSettings />
-          )}
-          {activeTab === 'serial' && (
-            <SerialSettings />
-          )}
           {activeTab === 'mqtt' && (
             <MqttSettings />
           )}
@@ -581,7 +543,7 @@ const SettingsForm = ({ onClose }) => {
                   </p>
                   
                   <a
-                    href="/admin"
+                    href="/care"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
@@ -609,7 +571,6 @@ const SettingsForm = ({ onClose }) => {
                       e.target.style.boxShadow = '0 2px 4px rgba(159, 122, 234, 0.3)';
                     }}
                   >
-                    <span style={{ fontSize: '18px' }}>⚙️</span>
                     Open Admin Panel
                   </a>
                   
@@ -656,7 +617,7 @@ const SettingsForm = ({ onClose }) => {
             }}>Settings saved successfully!</div>
           )}
           {/* Only show main Save Settings button for tabs that don't have their own save functionality */}
-          {activeTab !== 'dashboard' && activeTab !== 'gpio' && activeTab !== 'serial' && activeTab !== 'mqtt' && activeTab !== 'thresholds' && activeTab !== 'users' && activeTab !== 'admin' && (
+          {activeTab !== 'dashboard' && activeTab !== 'mqtt' && activeTab !== 'thresholds' && activeTab !== 'users' && activeTab !== 'admin' && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
               <button 
                 type="submit" 

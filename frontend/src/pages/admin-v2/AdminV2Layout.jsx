@@ -40,18 +40,22 @@ const sideNavItems = [
   { path: '/care/configuration', label: 'Configuration', Icon: ConfigIcon },
 ];
 
-// Get top nav items based on current section and user permissions
-const getTopNavItems = (section, hasAnyPermission) => {
+// Get top nav items based on current section, permissions, and read access (restricted mode hides History/Active)
+const getTopNavItems = (section, hasAnyPermission, hasReadAccess) => {
   const navItems = {
-    vitals: [
-      { path: '/care/vitals', label: 'Record' },
-      { path: '/care/vitals/history', label: 'History' },
-    ],
-    symptoms: [
-      { path: '/care/symptoms', label: 'Log' },
-      { path: '/care/symptoms/active', label: 'Active' },
-      { path: '/care/symptoms/history', label: 'History' },
-    ],
+    vitals: hasReadAccess
+      ? [
+          { path: '/care/vitals', label: 'Record' },
+          { path: '/care/vitals/history', label: 'History' },
+        ]
+      : [{ path: '/care/vitals', label: 'Record' }],
+    symptoms: hasReadAccess
+      ? [
+          { path: '/care/symptoms', label: 'Log' },
+          { path: '/care/symptoms/active', label: 'Active' },
+          { path: '/care/symptoms/history', label: 'History' },
+        ]
+      : [{ path: '/care/symptoms', label: 'Log' }],
     medications: [
       { path: '/care/medications', label: 'Overview' },
       { path: '/care/medications/schedule', label: 'Schedule' },
@@ -105,8 +109,6 @@ const getTopNavItems = (section, hasAnyPermission) => {
       ...(hasAnyPermission(['roles.view', 'roles.create', 'roles.update', 'roles.delete', 'users.view']) 
         ? [{ path: '/care/configuration/users/permissions', label: 'Permissions' }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
-      { path: '/care/configuration/serial', label: 'Serial' },
-      { path: '/care/configuration/alarms', label: 'Alarms' },
     ],
   };
   return navItems[section] || [];
@@ -121,11 +123,17 @@ const getCurrentSection = (pathname) => {
   return null;
 };
 
+const RESTRICTED_NAV_PATHS = ['/care', '/care/schedule', '/care/vitals', '/care/symptoms'];
+
 const AdminV2Layout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, logout, switchUser } = useAuth();
+  const { user, logout, switchUser, hasReadAccess, unlockWithAccountPassword } = useAuth();
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [unlockLoading, setUnlockLoading] = useState(false);
   const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -207,7 +215,7 @@ const AdminV2Layout = ({ children }) => {
     navigate('/login');
   };
   
-  const topNavItems = getTopNavItems(currentSection, hasAnyPermission);
+  const topNavItems = getTopNavItems(currentSection, hasAnyPermission, hasReadAccess);
   
   // Get URL with preserved query params for certain sections
   const getNavUrl = (path) => {
@@ -230,6 +238,31 @@ const AdminV2Layout = ({ children }) => {
 
   const isExactMatch = (path) => {
     return location.pathname === path;
+  };
+
+  const visibleNavItems = hasReadAccess
+    ? sideNavItems.filter(item => {
+        if (!item.requiredPermissions) return true;
+        return hasAnyPermission(item.requiredPermissions);
+      })
+    : sideNavItems.filter(item => RESTRICTED_NAV_PATHS.includes(item.path))
+        .filter(item => {
+          if (!item.requiredPermissions) return true;
+          return hasAnyPermission(item.requiredPermissions);
+        });
+
+  const handleUnlockSubmit = async (e) => {
+    e.preventDefault();
+    setUnlockError('');
+    setUnlockLoading(true);
+    const result = await unlockWithAccountPassword(unlockPassword);
+    setUnlockLoading(false);
+    if (result.success) {
+      setShowUnlockModal(false);
+      setUnlockPassword('');
+    } else {
+      setUnlockError(result.error || 'Invalid password');
+    }
   };
 
   return (
@@ -353,14 +386,7 @@ const AdminV2Layout = ({ children }) => {
         )}
         
         <nav className="admin-v2-sidebar-nav">
-          {sideNavItems
-            .filter(item => {
-              // If no required permissions, show to everyone
-              if (!item.requiredPermissions) return true;
-              // Check if user has any of the required permissions
-              return hasAnyPermission(item.requiredPermissions);
-            })
-            .map((item) => {
+          {visibleNavItems.map((item) => {
             const IconComponent = item.Icon;
             return (
               <Link
@@ -380,9 +406,6 @@ const AdminV2Layout = ({ children }) => {
         <div className="admin-v2-sidebar-footer">
           {!sidebarCollapsed && (
             <>
-              <Link to="/" className="admin-v2-back-link">
-                <BackArrowIcon size={14} /> Touch Dashboard
-              </Link>
               <button onClick={handleSwitchUser} className="admin-v2-back-link">
                 <UsersIcon size={14} /> Switch User
               </button>
@@ -393,9 +416,6 @@ const AdminV2Layout = ({ children }) => {
           )}
           {sidebarCollapsed && (
             <>
-              <Link to="/" className="admin-v2-back-link" title="Touch Dashboard">
-                <BackArrowIcon size={14} />
-              </Link>
               <button onClick={handleLogout} className="admin-v2-back-link" title="Log Out">
                 <BackArrowIcon size={14} />
               </button>
@@ -406,6 +426,45 @@ const AdminV2Layout = ({ children }) => {
 
       {/* Main Content Area */}
       <div className="admin-v2-main">
+        {/* Restricted mode banner */}
+        {!hasReadAccess && (
+          <div className="admin-v2-restricted-banner">
+            <span className="admin-v2-restricted-text">Restricted mode — You can only log and record. Enter account password to view data.</span>
+            <button type="button" className="admin-v2-unlock-btn" onClick={() => setShowUnlockModal(true)}>
+              Unlock
+            </button>
+          </div>
+        )}
+
+        {/* Unlock modal */}
+        {showUnlockModal && (
+          <div className="admin-v2-modal-overlay" onClick={() => !unlockLoading && setShowUnlockModal(false)}>
+            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
+              <h3>Unlock read access</h3>
+              <p>Enter account password to view data.</p>
+              <form onSubmit={handleUnlockSubmit}>
+                {unlockError && <div className="admin-v2-unlock-error">{unlockError}</div>}
+                <input
+                  type="password"
+                  value={unlockPassword}
+                  onChange={e => setUnlockPassword(e.target.value)}
+                  placeholder="Account password"
+                  autoFocus
+                  className="admin-v2-unlock-input"
+                />
+                <div className="admin-v2-modal-actions">
+                  <button type="button" className="admin-v2-btn-secondary" onClick={() => !unlockLoading && setShowUnlockModal(false)} disabled={unlockLoading}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="admin-v2-btn-primary" disabled={unlockLoading}>
+                    {unlockLoading ? 'Unlocking...' : 'Unlock'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* Top Navigation - only show if section has sub-navigation */}
         {topNavItems.length > 0 && (
           <header className="admin-v2-topnav">

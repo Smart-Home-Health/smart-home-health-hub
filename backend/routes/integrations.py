@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
-from dependencies import get_db
+from dependencies import get_db, require_read_access
 from routes.auth import require_full_auth, get_current_account_id
 from schemas.patient import Patient
 from schemas.integration import Integration as IntegrationModel, PatientIntegration, IntegrationDevice
@@ -77,7 +77,7 @@ def _get_or_create_integration(db: Session, slug: str) -> IntegrationModel:
 # ============================================================================
 
 @router.get("", response_model=List[IntegrationInfoResponse])
-async def list_integrations(current_user=Depends(require_full_auth)):
+async def list_integrations(current_user=Depends(require_full_auth), _: bool = Depends(require_read_access)):
     """
     List all available integrations with their metadata.
     """
@@ -87,7 +87,8 @@ async def list_integrations(current_user=Depends(require_full_auth)):
 @router.get("/{slug}", response_model=IntegrationInfoResponse)
 async def get_integration_info(
     slug: str,
-    current_user=Depends(require_full_auth)
+    current_user=Depends(require_full_auth),
+    _: bool = Depends(require_read_access)
 ):
     """
     Get details about a specific integration.
@@ -107,7 +108,8 @@ async def list_patient_integrations(
     patient_id: int,
     include_disabled: bool = False,
     db: Session = Depends(get_db),
-    current_user=Depends(require_full_auth)
+    current_user=Depends(require_full_auth),
+    _: bool = Depends(require_read_access)
 ):
     """
     List all integrations configured for a patient.
@@ -304,7 +306,8 @@ async def start_oauth_flow(
     redirect_url: str = Query(..., description="URL to redirect after OAuth completes"),
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user=Depends(require_full_auth)
+    current_user=Depends(require_full_auth),
+    _: bool = Depends(require_read_access)
 ):
     """
     Start OAuth flow for an integration.
@@ -579,7 +582,8 @@ async def list_integration_devices(
     patient_id: int,
     integration_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_full_auth)
+    current_user=Depends(require_full_auth),
+    _: bool = Depends(require_read_access)
 ):
     """
     List devices discovered for an integration.

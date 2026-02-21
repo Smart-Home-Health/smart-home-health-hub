@@ -66,6 +66,20 @@ async def get_auth_level(request: Request) -> str:
     return getattr(request.state, "auth_level", None) or request.scope.get("auth_level", "full")
 
 
+async def require_read_access(request: Request) -> bool:
+    """
+    Dependency that blocks access when session is read-restricted (add/chart only).
+    Use on routes that return sensitive or read data; omit on chart/add POSTs.
+    """
+    read_restricted = getattr(request.state, "read_restricted", False) or request.scope.get("read_restricted", False)
+    if read_restricted:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account password required to view data"
+        )
+    return True
+
+
 async def require_full_auth(request: Request) -> bool:
     """
     Dependency that ensures user has full auth (not just account-level).

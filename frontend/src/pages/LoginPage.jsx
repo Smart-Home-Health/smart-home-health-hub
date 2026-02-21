@@ -7,41 +7,46 @@ import './LoginPage.css';
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isAccountAuthenticated, accountLogin } = useAuth();
-  
-  const [slug, setSlug] = useState('');
+  const { isAuthenticated, isAccountAuthenticated, accountAccess } = useAuth();
+
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Get the intended destination from location state or default to /care
   const from = location.state?.from?.pathname || '/care';
 
-  // If already fully authenticated, redirect to intended destination
   useEffect(() => {
     if (isAuthenticated) {
       navigate(from, { replace: true });
     } else if (isAccountAuthenticated) {
-      // Account is logged in but no user selected - go to user selection
       navigate('/select-user', { state: { from: location.state?.from }, replace: true });
     }
   }, [isAuthenticated, isAccountAuthenticated, navigate, from, location.state]);
 
-  const handleSubmit = async (e) => {
+  const handleUnlockAndContinue = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
-    const result = await accountLogin(slug, password);
-
+    const result = await accountAccess(password);
+    setLoading(false);
     if (result.success) {
-      // Redirect to user selection page
       navigate('/select-user', { state: { from: location.state?.from }, replace: true });
     } else {
-      setError(result.error || 'Authentication failed');
+      setError(result.error || 'Invalid password');
     }
+  };
 
+  const handleContinueWithoutUnlock = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    const result = await accountAccess(null);
     setLoading(false);
+    if (result.success) {
+      navigate('/select-user', { state: { from: location.state?.from }, replace: true });
+    } else {
+      setError(result.error || 'Could not continue');
+    }
   };
 
   return (
@@ -55,47 +60,45 @@ export default function LoginPage() {
         <div className="login-card">
           <div className="login-header">
             <h2>Sign In</h2>
-            <p>Enter your account credentials</p>
+            <p>Enter account password to view data, or continue without unlocking to log and record only.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="login-form">
+          <form onSubmit={handleUnlockAndContinue} className="login-form">
             {error && <div className="error-message">{error}</div>}
 
             <div className="form-group">
-              <label htmlFor="slug">Account ID</label>
-              <input
-                type="text"
-                id="slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder="Enter account ID"
-                autoFocus
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
+              <label htmlFor="password">Account password</label>
               <input
                 type="password"
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
-                required
+                placeholder="Enter password to unlock"
+                autoFocus
               />
             </div>
 
             <button type="submit" className="submit-button" disabled={loading}>
-              {loading ? 'Signing in...' : 'Continue'}
+              {loading ? 'Signing in...' : 'Unlock and continue'}
             </button>
           </form>
-        </div>
 
-        <div className="login-footer">
-          <Link to="/" className="back-link">
-            ← Back to Home
-          </Link>
+          <div className="login-form login-form-secondary">
+            <button
+              type="button"
+              className="submit-button submit-button-secondary"
+              disabled={loading}
+              onClick={handleContinueWithoutUnlock}
+            >
+              Continue without unlocking
+            </button>
+          </div>
+
+          <div className="login-footer">
+            <Link to="/" className="back-link">
+              ← Back to Home
+            </Link>
+          </div>
         </div>
       </div>
     </div>

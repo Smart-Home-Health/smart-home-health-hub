@@ -17,7 +17,8 @@ from pydantic import BaseModel
 from cryptography.fernet import Fernet
 import httpx
 
-from dependencies import get_db
+from db import get_db
+from dependencies import require_read_access
 from models.readers import Reader
 from bus import EventBus
 from events import SensorUpdate, AlarmPanelState, EventSource
@@ -158,7 +159,8 @@ def delete_reader(db: Session, reader_id: int) -> bool:
 @router.get("")
 async def list_readers_endpoint(
     active_only: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """List all registered readers"""
     readers = list_readers(db, active_only)
@@ -173,7 +175,8 @@ async def list_readers_endpoint(
 @router.get("/{reader_id}")
 async def get_reader_endpoint(
     reader_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get a specific reader"""
     reader = get_reader(db, reader_id)
