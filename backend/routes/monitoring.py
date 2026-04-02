@@ -2,11 +2,13 @@
 Monitoring and alerts routes
 """
 import logging
+from collections import defaultdict
 from fastapi import APIRouter, Depends, Body, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func, and_
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date, time, timedelta
 from db import get_db
 from dependencies import require_read_access
 from models.monitoring import (
@@ -16,10 +18,15 @@ from models.monitoring import (
     PulseOxDataResponse,
     MonitoringDataQuery,
 )
-from crud.monitoring import (get_monitoring_alerts, get_unacknowledged_alerts_count, update_monitoring_alert, 
+from crud.monitoring import (get_monitoring_alerts, get_unacknowledged_alerts_count, update_monitoring_alert,
                              acknowledge_alert, get_pulse_ox_data_for_alert, get_available_pulse_ox_dates,
                              get_pulse_ox_data_by_date)
 from crud.vitals import analyze_pulse_ox_day
+from crud.medications import get_medication_history
+from crud.care_tasks import get_care_task_logs
+from crud.nutrition import get_daily_nutrition_intake, get_daily_nutrition_outputs
+from schemas.pulse_ox_data import PulseOxData
+from schemas.vital import Vital
 
 logger = logging.getLogger("app")
 
@@ -193,3 +200,160 @@ async def get_raw_pulse_ox_data(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving raw pulse ox data: {str(e)}")
+
+
+@router.get("/timeline")
+async def get_timeline_data(
+        patient_id: int,
+        target_date: Optional[str] = None,
+        db: Session = Depends(get_db),
+        _: bool = Depends(require_read_access)
+):
+    """
+    Get aggregated timeline data for a single day.
+    Returns downsampled pulse ox (1-min averages), medications, care tasks,
+    nutrition intake/output, manual vitals, and alerts.
+    """
+    try:
+        # Parse date
+        if target_date:
+            try:
+                date_obj = datetime.strptime(target_date, '%Y-%m-%d').date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        else:
+            date_obj = date.today()
+
+        date_str = date_obj.strftime('%Y-%m-%d')
+        start_dt = datetime.combine(date_obj, time.min)
+        end_dt = datetime.combine(date_obj, time.max)
+
+        # 1. Pulse ox - get raw data and downsample to 1-minute averages
+        raw_pulse_ox = get_pulse_ox_data_by_date(db, date_str, patient_id=patient_id)
+
+        # Group by minute and average
+        minute_buckets = defaultdict(lambda: {'spo2': [], 'bpm': [], 'perfusion': []})
+        for reading in raw_pulse_ox:
+            minute_key = reading.timestamp.replace(second=0, microsecond=0)
+            minute_buckets[minute_key]['spo2'].append(reading.spo2)
+            minute_buckets[minute_key]['bpm'].append(reading.bpm)
+            if reading.pa is not None:
+                minute_buckets[minute_key]['perfusion'].append(reading.pa)
+
+        pulse_ox_data = []
+        for ts in sorted(minute_buckets.keys()):
+            bucket = minute_buckets[ts]
+            pulse_ox_data.append({
+                'ts': ts.isoformat(),
+                'spo2': round(sum(bucket['spo2']) / len(bucket['spo2']), 1),
+                'bpm': round(sum(bucket['bpm']) / len(bucket['bpm']), 1),
+                'perfusion': round(sum(bucket['perfusion']) / len(bucket['perfusion']), 2) if bucket['perfusion'] else None
+            })
+
+        # 2. Medications administered that day
+        med_history = get_medication_history(
+            db, limit=200, start_date=date_str, end_date=date_str, patient_id=patient_id
+        )
+        medications = [{
+            'ts': m['administered_at'],
+            'name': m['medication_name'],
+            'dose': f"{m['dose_amount']} {m['dose_unit']}" if m.get('dose_unit') else str(m['dose_amount']),
+            'status': m['status'],
+            'notes': m.get('notes', '')
+        } for m in med_history]
+
+        # 3. Care tasks completed that day
+        task_logs = get_care_task_logs(
+            db, start_date=date_str, end_date=date_str, patient_id=patient_id, limit=200
+        )
+        care_tasks = [{
+            'ts': t['completed_at'],
+            'name': t['task_name'],
+            'category': t.get('task_category', ''),
+            'status': t.get('completion_status', ''),
+            'notes': t.get('notes', '')
+        } for t in task_logs]
+
+        # 4. Nutrition intake
+        intake_records = get_daily_nutrition_intake(db, patient_id, date_obj)
+        nutrition_intake = [{
+            'ts': r.consumed_at.isoformat() if r.consumed_at else None,
+            'item_name': r.item_name,
+            'item_type': r.item_type,
+            'amount': r.amount,
+            'amount_unit': r.amount_unit,
+            'calories': r.calories
+        } for r in intake_records if r.consumed_at]
+
+        # 5. Nutrition output
+        output_records = get_daily_nutrition_outputs(db, patient_id, date_obj)
+        nutrition_output = [{
+            'ts': r.occurred_at.isoformat() if r.occurred_at else None,
+            'output_type': r.output_type,
+            'is_diaper': r.is_diaper,
+            'diaper_wetness': r.diaper_wetness,
+            'diaper_soiled': r.diaper_soiled,
+            'consistency': r.consistency,
+            'color': r.color,
+            'amount': r.amount,
+            'notes': r.notes
+        } for r in output_records if r.occurred_at]
+
+        # 6. Manual vitals recorded that day
+        vitals_query = db.query(Vital).filter(
+            Vital.patient_id == patient_id,
+            Vital.timestamp >= start_dt,
+            Vital.timestamp <= end_dt
+        ).order_by(Vital.timestamp.asc()).all()
+
+        vitals = [{
+            'ts': v.timestamp.isoformat(),
+            'vital_type': v.vital_type,
+            'vital_group': v.vital_group,
+            'value': v.value,
+            'unit': v.unit,
+            'notes': v.notes
+        } for v in vitals_query]
+
+        # 7. Monitoring alerts for that day
+        all_alerts = get_monitoring_alerts(
+            db, limit=200, include_acknowledged=True, patient_id=patient_id
+        )
+        alerts = []
+        for a in all_alerts:
+            start_time = a.get('start_time')
+            if start_time:
+                if isinstance(start_time, str):
+                    alert_dt = datetime.fromisoformat(start_time)
+                else:
+                    alert_dt = start_time
+                # Check if alert falls on our target date
+                if alert_dt.date() == date_obj:
+                    end_time = a.get('end_time')
+                    alerts.append({
+                        'start': start_time.isoformat() if hasattr(start_time, 'isoformat') else start_time,
+                        'end': end_time.isoformat() if end_time and hasattr(end_time, 'isoformat') else end_time,
+                        'spo2_alarm': a.get('spo2_alarm_triggered', False),
+                        'hr_alarm': a.get('hr_alarm_triggered', False),
+                        'spo2_min': a.get('spo2_min'),
+                        'bpm_min': a.get('bpm_min'),
+                        'oxygen_used': a.get('oxygen_used', False),
+                        'acknowledged': a.get('acknowledged', False)
+                    })
+
+        return {
+            'date': date_str,
+            'pulse_ox': pulse_ox_data,
+            'medications': medications,
+            'care_tasks': care_tasks,
+            'nutrition_intake': nutrition_intake,
+            'nutrition_output': nutrition_output,
+            'vitals': vitals,
+            'alerts': alerts
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error building timeline data: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error building timeline data: {str(e)}")

@@ -81,6 +81,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
     monitoring: [
       { path: '/care/monitoring', label: 'Alerts' },
       { path: '/care/monitoring/history', label: 'History' },
+      { path: '/care/monitoring/timeline', label: 'Timeline' },
       { path: '/care/monitoring/settings', label: 'Alert Settings' },
     ],
     profile: [
