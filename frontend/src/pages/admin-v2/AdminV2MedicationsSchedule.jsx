@@ -226,6 +226,7 @@ const AdminV2MedicationsSchedule = () => {
         credentials: 'include',
         body: JSON.stringify({
           schedule_id: medication.schedule_id,
+          scheduled_time: medication.scheduled_time,
           dose_amount: 0,
           notes: 'Skipped',
           ...(selectedPatient?.id != null && { patient_id: selectedPatient.id })

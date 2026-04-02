@@ -288,15 +288,15 @@ const AdminV2Schedule = () => {
           user_id: user?.id || null,
           notes: completeFormData.notes || null,
           completed_at: localDateTimeToUTC(completeFormData.completed_at),
-          // Include type-specific data
-          ...(type === 'medication' && { 
-            dose_amount: completeFormData.dose_amount || item.dose_amount,
-            dose_unit: completeFormData.dose_unit || item.dose_unit
+          // Include type-specific data — use each item's own scheduled values for bulk
+          ...(type === 'medication' && {
+            dose_amount: item.dose_amount,
+            dose_unit: item.dose_unit
           }),
           ...(type === 'nutrition' && {
-            amount: completeFormData.amount || item.default_amount,
-            amount_unit: completeFormData.amount_unit || item.default_amount_unit,
-            item_name: completeFormData.item_name || item.default_item
+            amount: item.default_amount,
+            amount_unit: item.default_amount_unit,
+            item_name: item.default_item
           })
         }));
         

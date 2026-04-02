@@ -247,12 +247,24 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
             elif diff_minutes > 15:  # More than 15 minutes late
                 administered_late = True
         
+        # For skipped doses, use the scheduled time as administered_at
+        # so the record appears at the correct time on the timeline
+        if float(dose_amount) == 0 and scheduled_time:
+            if isinstance(scheduled_time, datetime):
+                log_time = scheduled_time
+                if log_time.tzinfo is None:
+                    log_time = log_time.replace(tzinfo=timezone.utc)
+            else:
+                log_time = datetime.fromisoformat(str(scheduled_time).replace('Z', '+00:00'))
+        else:
+            log_time = now
+
         # Record log
         log = MedicationLog(
             medication_id=med_id,
             patient_id=current_patient_id,  # Always use current patient for logs
             schedule_id=schedule_id,
-            administered_at=now,
+            administered_at=log_time,
             dose_amount=dose_amount,
             is_scheduled=bool(schedule_id),
             scheduled_time=scheduled_time,
@@ -612,22 +624,59 @@ def get_missed_medications(db: Session, target_date=None):
 
 def get_daily_medication_schedule(db: Session, patient_id=None):
     """
-    Get scheduled medications for today and yesterday in chronological order with status
-    
+    Get scheduled medications for today and yesterday in chronological order with status.
+    Uses Eastern timezone to determine local day boundaries so evening doses
+    aren't cut off by UTC date rollover.
+
     Args:
         patient_id: Optional patient ID to filter schedules. If None, uses current patient from settings
-    
+
     Returns:
         Dict with 'scheduled_medications' list sorted chronologically
     """
     try:
-        today = utc_today()
-        yesterday = today - timedelta(days=1)
-        current_time = utc_now()
-        
-        # Get scheduled meds for yesterday and today
-        yesterday_scheduled = get_scheduled_medications_for_date(db, yesterday, patient_id=patient_id)
-        today_scheduled = get_scheduled_medications_for_date(db, today, patient_id=patient_id)
+        import pytz
+        eastern = pytz.timezone('US/Eastern')
+        now_utc = utc_now()
+        now_eastern = now_utc.astimezone(eastern)
+        local_today = now_eastern.date()
+        local_yesterday = local_today - timedelta(days=1)
+        current_time = now_utc
+
+        # Local day boundaries in UTC for filtering cron-generated UTC times
+        local_today_start_utc = eastern.localize(datetime.combine(local_today, datetime.min.time())).astimezone(timezone.utc)
+        local_today_end_utc = eastern.localize(datetime.combine(local_today + timedelta(days=1), datetime.min.time())).astimezone(timezone.utc)
+        local_yesterday_start_utc = eastern.localize(datetime.combine(local_yesterday, datetime.min.time())).astimezone(timezone.utc)
+
+        # Query the UTC dates that span the local yesterday and today
+        # e.g. for EDT (UTC-4), local Apr 2 = UTC Apr 2 04:00 to Apr 3 04:00
+        utc_dates_needed = set()
+        for dt in [local_yesterday_start_utc, local_today_start_utc, local_today_end_utc - timedelta(seconds=1)]:
+            utc_dates_needed.add(dt.date())
+
+        # Get cron-generated schedule entries for all relevant UTC dates
+        all_raw = []
+        for utc_date in sorted(utc_dates_needed):
+            all_raw.extend(get_scheduled_medications_for_date(db, utc_date, patient_id=patient_id))
+
+        # Deduplicate by (schedule_id, scheduled_time)
+        seen = set()
+        deduped = []
+        for item in all_raw:
+            key = (item['schedule_id'], item['scheduled_time'])
+            if key not in seen:
+                seen.add(key)
+                deduped.append(item)
+
+        # Split into local yesterday and local today based on UTC boundaries
+        yesterday_scheduled = [
+            item for item in deduped
+            if local_yesterday_start_utc <= item['scheduled_time'] < local_today_start_utc
+        ]
+        today_scheduled = [
+            item for item in deduped
+            if local_today_start_utc <= item['scheduled_time'] < local_today_end_utc
+        ]
         
         all_scheduled = []
         
@@ -686,8 +735,8 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
                     'is_completed': True
                 })
             else:
-                # Show as missed if it's from yesterday or earlier
-                if scheduled_time.date() < today:
+                # Show as missed if it's from yesterday (before local today start)
+                if scheduled_time < local_today_start_utc:
                     all_scheduled.append({
                         **item,
                         'status': 'missed',
@@ -762,16 +811,13 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
                 
                 if scheduled_time_naive > current_time_naive:
                     # Future dose
-                    status = 'pending'
-                elif time_diff <= 60:
-                    # Within 1 hour of scheduled time
-                    status = 'due_on_time'
+                    status = 'upcoming'
                 elif time_diff <= 120:
-                    # 1-2 hours late
-                    status = 'due_warning'
+                    # Within 2 hours of scheduled time — ready to take
+                    status = 'ready'
                 else:
                     # More than 2 hours late
-                    status = 'due_late'
+                    status = 'missed'
                 
                 all_scheduled.append({
                     **item,

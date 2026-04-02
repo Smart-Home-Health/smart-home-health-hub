@@ -306,7 +306,7 @@ class StateModule:
         """End the current pulse oximeter alert."""
         try:
             from state_manager import get_db_session
-            from crud.monitoring import update_monitoring_alert, acknowledge_alert
+            from crud.monitoring import update_monitoring_alert
 
             if self.current_alert_id:
                 alert_id = self.current_alert_id
@@ -318,7 +318,6 @@ class StateModule:
                             alert_id=alert_id,
                             end_time=timestamp.isoformat(),
                         )
-                        acknowledge_alert(db=db, alert_id=alert_id)
 
                 await asyncio.to_thread(_sync_end_alert)
                 
