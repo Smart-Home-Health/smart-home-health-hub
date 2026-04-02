@@ -4,15 +4,17 @@ import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import AlertsList from '../../components/alerts/AlertsList';
 import AlertsHistory from '../../components/alerts/AlertsHistory';
+import AdminV2MonitoringTimeline from './AdminV2MonitoringTimeline';
 import './AdminV2.css';
 
 const AdminV2Monitoring = () => {
   const location = useLocation();
   const { selectedPatient } = useAdminPatient();
 
+  const isTimelineView = location.pathname.includes('/care/monitoring/timeline');
   const isHistoryView = location.pathname.includes('/care/monitoring/history');
   const isSettingsView = location.pathname.includes('/care/monitoring/settings');
-  const isAlertsView = !isHistoryView && !isSettingsView;
+  const isAlertsView = !isHistoryView && !isSettingsView && !isTimelineView;
 
   const renderContent = () => {
     if (!selectedPatient) {
@@ -21,6 +23,10 @@ const AdminV2Monitoring = () => {
           <p>Select a patient from the sidebar to view monitoring alerts and history.</p>
         </div>
       );
+    }
+
+    if (isTimelineView) {
+      return <AdminV2MonitoringTimeline />;
     }
 
     if (isSettingsView) {

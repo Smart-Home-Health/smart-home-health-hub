@@ -102,6 +102,15 @@ class ReaderConnectionManager:
 connection_manager = ReaderConnectionManager()
 
 
+def _is_reader_connected(reader) -> bool:
+    """Reader is connected if it has a WebSocket or has sent data recently via MQTT."""
+    if connection_manager.is_connected(reader.id):
+        return True
+    if reader.last_data_at:
+        return (datetime.utcnow() - reader.last_data_at).total_seconds() < 60
+    return False
+
+
 # --- CRUD Operations ---
 
 def get_reader(db: Session, reader_id: int) -> Optional[Reader]:
@@ -167,7 +176,7 @@ async def list_readers_endpoint(
     readers = list_readers(db, active_only)
     return {
         "readers": [
-            {**r.to_dict(), "connected": connection_manager.is_connected(r.id)}
+            {**r.to_dict(), "connected": _is_reader_connected(r)}
             for r in readers
         ]
     }
@@ -185,7 +194,7 @@ async def get_reader_endpoint(
         raise HTTPException(status_code=404, detail="Reader not found")
     return {
         **reader.to_dict(),
-        "connected": connection_manager.is_connected(reader_id)
+        "connected": _is_reader_connected(reader)
     }
 
 
@@ -416,13 +425,25 @@ def _sensor_values_from_message(msg: dict) -> dict:
     return {k: v for k, v in msg.items() if k not in _SENSOR_MSG_KEYS and v is not None}
 
 
+_reader_activity_cache: Dict[int, float] = {}  # reader_id -> last update timestamp
+_READER_ACTIVITY_INTERVAL = 5  # seconds between DB writes
+
 def _update_reader_activity(
     reader_id: int,
     *,
     device_name: Optional[str] = None,
     last_data: bool = False,
 ) -> None:
-    """Update reader last_seen (and optionally name, last_data_at). Uses a short-lived session."""
+    """Update reader last_seen (and optionally name, last_data_at). Throttled to avoid DB churn."""
+    import time
+    now = time.monotonic()
+    # Always write for device_name updates; throttle routine last_seen/last_data
+    if device_name is None:
+        last_write = _reader_activity_cache.get(reader_id, 0)
+        if now - last_write < _READER_ACTIVITY_INTERVAL:
+            return
+    _reader_activity_cache[reader_id] = now
+
     db = SessionLocal()
     try:
         reader = db.query(Reader).filter(Reader.id == reader_id).first()
@@ -436,6 +457,35 @@ def _update_reader_activity(
         db.commit()
     finally:
         db.close()
+
+
+def _update_reader_activity_by_patient(patient_id: int) -> None:
+    """Update last_data_at for all paired readers assigned to this patient."""
+    db = SessionLocal()
+    try:
+        readers = db.query(Reader).filter(
+            Reader.patient_id == patient_id,
+            Reader.is_paired == True,
+        ).all()
+        now = datetime.utcnow()
+        for reader in readers:
+            reader.last_seen = now
+            reader.last_data_at = now
+        if readers:
+            db.commit()
+    finally:
+        db.close()
+
+
+async def start_reader_activity_subscriber(event_bus) -> None:
+    """Subscribe to MQTT SensorUpdate events and update reader activity."""
+    from events import SensorUpdate, EventSource
+    async for event in event_bus.subscribe_to_type(SensorUpdate):
+        try:
+            if event.source == EventSource.MQTT and event.patient_id is not None:
+                _update_reader_activity_by_patient(event.patient_id)
+        except Exception as e:
+            logger.error(f"Error updating reader activity from MQTT: {e}")
 
 
 @router.websocket("/ws/{reader_id}")

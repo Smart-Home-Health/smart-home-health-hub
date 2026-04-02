@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import config from '../config';
+import config, { apiFetch } from '../config';
 
 const AdminPatientContext = createContext();
 
@@ -58,6 +58,11 @@ export const AdminPatientProvider = ({ children }) => {
     setSelectedPatient(patient);
     if (patient) {
       sessionStorage.setItem('adminSelectedPatientId', patient.id.toString());
+      // Sync with backend so data recording uses the selected patient
+      fetch(`${config.apiUrl}/api/patients/${patient.id}/set-current`, {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(err => console.error('Error setting current patient:', err));
     } else {
       sessionStorage.removeItem('adminSelectedPatientId');
     }
