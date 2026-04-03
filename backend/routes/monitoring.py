@@ -231,22 +231,27 @@ async def get_timeline_data(
         # 1. Pulse ox - get raw data and downsample to 1-minute averages
         raw_pulse_ox = get_pulse_ox_data_by_date(db, date_str, patient_id=patient_id)
 
-        # Group by minute and average
+        # Group by minute and average (exclude -1 invalid/disconnected reads)
         minute_buckets = defaultdict(lambda: {'spo2': [], 'bpm': [], 'perfusion': []})
         for reading in raw_pulse_ox:
             minute_key = reading.timestamp.replace(second=0, microsecond=0)
-            minute_buckets[minute_key]['spo2'].append(reading.spo2)
-            minute_buckets[minute_key]['bpm'].append(reading.bpm)
-            if reading.pa is not None:
+            if reading.spo2 is not None and reading.spo2 != -1:
+                minute_buckets[minute_key]['spo2'].append(reading.spo2)
+            if reading.bpm is not None and reading.bpm != -1:
+                minute_buckets[minute_key]['bpm'].append(reading.bpm)
+            if reading.pa is not None and reading.pa != -1:
                 minute_buckets[minute_key]['perfusion'].append(reading.pa)
 
         pulse_ox_data = []
         for ts in sorted(minute_buckets.keys()):
             bucket = minute_buckets[ts]
+            # Skip minutes with no valid readings
+            if not bucket['spo2'] and not bucket['bpm']:
+                continue
             pulse_ox_data.append({
                 'ts': ts.isoformat(),
-                'spo2': round(sum(bucket['spo2']) / len(bucket['spo2']), 1),
-                'bpm': round(sum(bucket['bpm']) / len(bucket['bpm']), 1),
+                'spo2': round(sum(bucket['spo2']) / len(bucket['spo2']), 1) if bucket['spo2'] else None,
+                'bpm': round(sum(bucket['bpm']) / len(bucket['bpm']), 1) if bucket['bpm'] else None,
                 'perfusion': round(sum(bucket['perfusion']) / len(bucket['perfusion']), 2) if bucket['perfusion'] else None
             })
 
