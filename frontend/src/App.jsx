@@ -1,501 +1,176 @@
-import { useState, useEffect, useRef } from "react";
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Layout from './components/layout/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import LandingPage from './pages/LandingPage';
+import LoginPage from './pages/LoginPage';
+import UserSelectionPage from './pages/UserSelectionPage';
+import Dashboard from './pages/Dashboard';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminSchedule from './pages/admin/AdminSchedule';
+import AdminMedications from './pages/admin/AdminMedications';
+import AdminCareTasks from './pages/admin/AdminCareTasks';
+import AdminEquipment from './pages/admin/AdminEquipment';
+import AdminMonitoring from './pages/admin/AdminMonitoring';
+import AdminSettings from './pages/admin/AdminSettings';
+import AdminBusinesses from './pages/admin/AdminBusinesses';
+import AdminProviders from './pages/admin/AdminProviders';
+import AdminV2Dashboard from './pages/admin-v2/AdminV2Dashboard';
+import AdminV2Users from './pages/admin-v2/AdminV2Users';
+import AdminV2Roles from './pages/admin-v2/AdminV2Roles';
+import AdminV2Permissions from './pages/admin-v2/AdminV2Permissions';
+import AdminV2Medications from './pages/admin-v2/AdminV2Medications';
+import AdminV2MedicationsSchedule from './pages/admin-v2/AdminV2MedicationsSchedule';
+import AdminV2MedicationsHistory from './pages/admin-v2/AdminV2MedicationsHistory';
+import AdminV2CareTasks from './pages/admin-v2/AdminV2CareTasks';
+import AdminV2CareTasksSchedule from './pages/admin-v2/AdminV2CareTasksSchedule';
+import AdminV2CareTasksHistory from './pages/admin-v2/AdminV2CareTasksHistory';
+import AdminV2Equipment from './pages/admin-v2/AdminV2Equipment';
+import AdminV2EquipmentHistory from './pages/admin-v2/AdminV2EquipmentHistory';
+import AdminV2Shipments from './pages/admin-v2/AdminV2Shipments';
+import AdminV2ShipmentDetail from './pages/admin-v2/AdminV2ShipmentDetail';
+import AdminV2ShipmentAlerts from './pages/admin-v2/AdminV2ShipmentAlerts';
+import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
+import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
+import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
+import AdminV2Schedule from './pages/admin-v2/AdminV2Schedule';
+import AdminV2Vitals from './pages/admin-v2/AdminV2Vitals';
+import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
+import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
+import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
+import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
+import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
+import AdminV2Monitoring from './pages/admin-v2/AdminV2Monitoring';
+import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
+import AdminV2Integrations from './pages/admin-v2/AdminV2Integrations';
+import AdminV2Mqtt from './pages/admin-v2/AdminV2Mqtt';
+import AdminV2ProfileMqtt from './pages/admin-v2/AdminV2ProfileMqtt';
+import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
+import FirstRunSetup from './components/FirstRunSetup';
 import "./App.css";
-import ChartBlock from "./components/ChartBlock";
-import ClockCard from "./components/ClockCard";
-import BloodPressureCard from "./components/BloodPressureCard";
-import TemperatureCard from "./components/TemperatureCard";
-import ModalBase from "./components/ModalBase";
-import SettingsForm from "./components/SettingsForm";
-import VitalsForm from "./components/VitalsForm";
-// Import the minimalist icons from the file
-import { 
-  SettingsIcon, 
-  MinimalistVentIcon, 
-  MinimalistPulseOxIcon, 
-  ClipboardIcon 
-} from "./components/Icons";
-import logoImage from './assets/logo2.png';
-import config from './config';
-import AlertsList from "./components/AlertsList";
-// Import the PulseOxModal component
-import PulseOxModal from "./components/PulseOxModal";
 
-export default function App() {
-  // Add state for modal
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  
-  // Add state for notification counts
-  const [ventNotifications, setVentNotifications] = useState(2); // Example count
-  const [pulseOxNotifications, setPulseOxNotifications] = useState(3); // Example count
-  const [pulseOxAlerts, setPulseOxAlerts] = useState(0);
+function AppContent() {
+  const { isFirstRun, loading } = useAuth();
 
-  const [sensorValues, setSensorValues] = useState({
-    spo2: null,
-    bpm: null,
-    perfusion: null,
-    skin_temp: null,
-    body_temp: null
-  });
-
-  const [datasets, setDatasets] = useState({
-    spo2: [],
-    bpm: [],
-    perfusion: []
-  });
-
-  const [bpHistory, setBpHistory] = useState([]);
-  const [tempHistory, setTempHistory] = useState([]);
-
-  const initialDataReceived = useRef(false);
-
-  useEffect(() => {
-    console.log(`Connecting to WebSocket at: ${config.wsUrl}`);
-    const ws = new WebSocket(config.wsUrl);
-
-    ws.onopen = () => console.log("WebSocket connected");
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "sensor_update" && msg.state) {
-        const now = Date.now();
-
-        setSensorValues({
-          spo2: msg.state.spo2,
-          bpm: msg.state.bpm,
-          perfusion: msg.state.perfusion,
-          skin_temp: msg.state.skin_temp,
-          body_temp: msg.state.body_temp
-        });
-
-        if (msg.state.bp) {
-          const bpData = msg.state.bp
-            .filter(reading => 
-              (reading.systolic_bp !== null && reading.systolic_bp !== 0) || 
-              (reading.diastolic_bp !== null && reading.diastolic_bp !== 0) || 
-              (reading.map_bp !== null && reading.map_bp !== 0)
-            )
-            .map(reading => ({
-              datetime: reading.datetime || Date.now().toString(),
-              systolic: reading.systolic_bp,
-              diastolic: reading.diastolic_bp,
-              map: reading.map_bp
-            }));
-          
-          setBpHistory(bpData);
-        }
-
-        if (msg.state.temp) {
-          const tempData = msg.state.temp
-            .filter(reading => 
-              (reading.skin_temp !== null && reading.skin_temp !== 0) || 
-              (reading.body_temp !== null && reading.body_temp !== 0)
-            )
-            .map(reading => ({
-              datetime: reading.datetime || Date.now().toString(),
-              skin: reading.skin_temp,
-              body: reading.body_temp
-            }));
-          
-          setTempHistory(tempData);
-        }
-
-        setDatasets(prev => {
-          const newState = { ...prev };
-          let hasValidUpdate = false;
-
-          if (msg.state.spo2 !== null && msg.state.spo2 !== undefined) {
-            newState.spo2 = [...prev.spo2, { x: now, y: msg.state.spo2 }].slice(-1800);
-            hasValidUpdate = true;
-          }
-
-          if (msg.state.bpm !== null && msg.state.bpm !== undefined) {
-            newState.bpm = [...prev.bpm, { x: now, y: msg.state.bpm }].slice(-1800);
-            hasValidUpdate = true;
-          }
-
-          if (msg.state.perfusion !== null && msg.state.perfusion !== undefined) {
-            newState.perfusion = [...prev.perfusion, { x: now, y: msg.state.perfusion }].slice(-1800);
-            hasValidUpdate = true;
-          }
-
-          if (hasValidUpdate && !initialDataReceived.current) {
-            initialDataReceived.current = true;
-            setBpHistory(prev => [...prev]);
-            setTempHistory(prev => [...prev]);
-          }
-
-          return newState;
-        });
-
-        // Handle alerts count - only update if it's specifically included in the message
-        if (msg.state.alerts_count !== undefined) {
-          setPulseOxAlerts(msg.state.alerts_count);
-        }
-        
-        // Similarly for vent notifications if the server sends them
-        if (msg.state.vent_notifications !== undefined) {
-          setVentNotifications(msg.state.vent_notifications);
-        }
-      }
-      
-      // Handle explicit alert acknowledgment messages if your server sends them
-      else if (msg.type === "alert_acknowledged") {
-        // Update alerts count based on server response
-        if (msg.alerts_count !== undefined) {
-          setPulseOxAlerts(msg.alerts_count);
-        }
-      }
-    };
-
-    ws.onclose = () => console.log("WebSocket disconnected");
-
-    return () => ws.close();
-  }, []);
-
-  const calculateAvg = (data) => {
-    if (data.length === 0) return 0;
-    return data.reduce((sum, item) => sum + item.y, 0) / data.length;
-  };
-
-  const calculateMin = (data) => {
-    if (data.length === 0) return 0;
-    return Math.min(...data.map(item => item.y));
-  };
-
-  const calculateMax = (data) => {
-    if (data.length === 0) return 0;
-    return Math.max(...data.map(item => item.y));
-  };
-
-  // Add these state hooks and handlers
-  const [isVentModalOpen, setIsVentModalOpen] = useState(false);
-  const [isPulseOxModalOpen, setIsPulseOxModalOpen] = useState(false);
-  const [isVitalsModalOpen, setIsVitalsModalOpen] = useState(false);
-
-  // Close all modals function for reuse
-  const closeAllModals = () => {
-    setIsVentModalOpen(false);
-    setIsPulseOxModalOpen(false);
-    setIsSettingsModalOpen(false);
-    setIsVitalsModalOpen(false);
-  };
-
-  // Add handler functions
-  const handleVentClick = () => {
-    if (isVentModalOpen) {
-      // If already open, just close it
-      setIsVentModalOpen(false);
-    } else {
-      // Close all then open this one
-      closeAllModals();
-      setIsVentModalOpen(true);
-    }
-    // DON'T clear notifications when clicked
-    // setVentNotifications(0); - Remove this line
-  };
-
-  const handlePulseOxClick = () => {
-    if (isPulseOxModalOpen) {
-      // If already open, just close it
-      setIsPulseOxModalOpen(false);
-    } else {
-      // Close all then open this one
-      closeAllModals();
-      setIsPulseOxModalOpen(true);
-    }
-    // DON'T clear notifications when clicked - wait for acknowledgment instead
-  };
-
-  const handleSettingsClick = () => {
-    if (isSettingsModalOpen) {
-      // If already open, just close it
-      setIsSettingsModalOpen(false);
-    } else {
-      // Close all then open this one
-      closeAllModals();
-      setIsSettingsModalOpen(true);
-    }
-  };
-
-  const handleVitalsClick = () => {
-    if (isVitalsModalOpen) {
-      // If already open, just close it
-      setIsVitalsModalOpen(false);
-    } else {
-      // Close all then open this one
-      closeAllModals();
-      setIsVitalsModalOpen(true);
-    }
-  };
-
-  // Modify the handlePulseOxAlertsViewed function
-  const handlePulseOxAlertsViewed = () => {
-    // DON'T automatically clear alerts when the modal is viewed
-    // setPulseOxAlerts(0); - Remove this line
-    
-    // Instead, alerts will be cleared when individual alerts are acknowledged
-    // or when the WebSocket sends an update with zero alerts
-    
-    // You might want to inform the server that alerts are being viewed
-    // This could be useful for analytics or user activity tracking
-    fetch(`${config.apiUrl}/api/alerts/viewed`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    }).catch(err => console.error('Error marking alerts as viewed:', err));
-  };
-
-  // Add this function to handle alert acknowledgment
-  const handleAlertAcknowledged = (alertId) => {
-    // Fetch updated alert count from server
-    fetch(`${config.apiUrl}/api/monitoring/alerts/count`)
-      .then(response => response.json())
-      .then(data => {
-        if (data && data.count !== undefined) {
-          setPulseOxAlerts(data.count);
-        }
-      })
-      .catch(err => console.error('Error fetching updated alert count:', err));
-  };
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '100vh',
+        fontSize: '18px',
+        color: '#718096',
+        background: '#1a1f2e'
+      }}>
+        Loading...
+      </div>
+    );
+  }
 
   return (
-    <div className="dashboard-wrapper">
-      <div className="header-section">
-        <div className="logo-container">
-          <img src={logoImage} alt="Logo" className="header-logo" />
-          <div className="logo-text">Smart Home Health</div>
-        </div>
-        
-        <div className="menu-container">
-          <div className="icon-wrapper">
-            <button 
-              className={`menu-button ${isVentModalOpen ? 'active' : ''}`}
-              onClick={handleVentClick}
-              aria-label="Ventilator"
-            >
-              <MinimalistVentIcon />
-            </button>
-            {ventNotifications > 0 && <div className="badge">{ventNotifications}</div>}
-          </div>
+    <>
+      <Router>
+        {isFirstRun ? <FirstRunSetup /> : <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<Navigate to="/care" replace />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/select-user" element={<UserSelectionPage />} />
           
-          <div className="icon-wrapper">
-            <button 
-              className={`menu-button ${isPulseOxModalOpen ? 'active' : ''}`}
-              onClick={handlePulseOxClick}
-              aria-label="Pulse Oximeter"
-            >
-              <MinimalistPulseOxIcon />
-              {pulseOxAlerts > 0 && <div className="badge">{pulseOxAlerts}</div>}
-            </button>
-          </div>
+          {/* Protected Routes - wrapped in Layout */}
+          <Route path="/live" element={
+            <ProtectedRoute requireFullAuth={false}>
+              <Layout>
+                <Dashboard />
+              </Layout>
+            </ProtectedRoute>
+          } />
           
-          <div className="icon-wrapper">
-            <button 
-              className={`menu-button ${isVitalsModalOpen ? 'active' : ''}`}
-              onClick={handleVitalsClick}
-              aria-label="Manual Vitals Entry"
-            >
-              <ClipboardIcon />
-            </button>
-          </div>
-          
-          <div className="icon-wrapper">
-            <button 
-              className={`menu-button ${isSettingsModalOpen ? 'active' : ''}`}
-              onClick={handleSettingsClick}
-              aria-label="Settings"
-            >
-              <SettingsIcon />
-            </button>
-          </div>
-        </div>
-        
-        <div className="datetime-container">
-          <ClockCard />
-        </div>
-      </div>
-      
-      <div className="dashboard-container">
-        <div className="values-column">
-          <div className="value-display spo2">
-            <h3 className="value-title">SpO₂</h3>
-            <div className="value-content">
-              <div className="value">{sensorValues.spo2 ?? "--"}</div>
-              <div className="unit">%</div>
-            </div>
-            <div className="value-stats">
-              {datasets.spo2.length > 0 ? (
-                <>
-                  <span>
-                    Avg: {calculateAvg(datasets.spo2.filter(item => item.y !== 0)).toFixed(1)}%
-                  </span>
-                  <span>
-                    Min: {calculateMin(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                  </span>
-                  <span>
-                    Max: {calculateMax(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                  </span>
-                </>
-              ) : (
-                <span>No data available</span>
-              )}
-            </div>
-          </div>
-          
-          <div className="value-display bpm">
-            <h3 className="value-title">Heart Rate</h3>
-            <div className="value-content">
-              <div className="value">{sensorValues.bpm ?? "--"}</div>
-              <div className="unit">BPM</div>
-            </div>
-            <div className="value-stats">
-              {datasets.bpm.length > 0 ? (
-                <>
-                  <span>
-                    Avg: {calculateAvg(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                  </span>
-                  <span>
-                    Min: {calculateMin(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                  </span>
-                  <span>
-                    Max: {calculateMax(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                  </span>
-                </>
-              ) : (
-                <span>No data available</span>
-              )}
-            </div>
-          </div>
-          
-          <div className="value-display perfusion">
-            <h3 className="value-title">Perfusion</h3>
-            <div className="value-content">
-              <div className="value">{sensorValues.perfusion ?? "--"}</div>
-              <div className="unit">%</div>
-            </div>
-            <div className="value-stats">
-              {datasets.perfusion.length > 0 ? (
-                <>
-                  <span>
-                    Avg: {calculateAvg(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                  </span>
-                  <span>
-                    Min: {calculateMin(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                  </span>
-                  <span>
-                    Max: {calculateMax(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                  </span>
-                </>
-              ) : (
-                <span>No data available</span>
-              )}
-            </div>
-          </div>
-        </div>
+          {/* Admin Routes - Protected */}
+          <Route path="/admin" element={<ProtectedRoute><Layout><AdminDashboard /></Layout></ProtectedRoute>} />
+          <Route path="/admin/schedule" element={<ProtectedRoute><Layout><AdminSchedule /></Layout></ProtectedRoute>} />
+          <Route path="/admin/medications" element={<ProtectedRoute><Layout><AdminMedications /></Layout></ProtectedRoute>} />
+          <Route path="/admin/care-tasks" element={<ProtectedRoute><Layout><AdminCareTasks /></Layout></ProtectedRoute>} />
+          <Route path="/admin/equipment" element={<ProtectedRoute><Layout><AdminEquipment /></Layout></ProtectedRoute>} />
+          <Route path="/admin/monitoring" element={<ProtectedRoute><Layout><AdminMonitoring /></Layout></ProtectedRoute>} />
+          <Route path="/admin/settings" element={<ProtectedRoute><Layout><AdminSettings /></Layout></ProtectedRoute>} />
+          <Route path="/admin/businesses" element={<ProtectedRoute><Layout><AdminBusinesses /></Layout></ProtectedRoute>} />
+          <Route path="/admin/providers" element={<ProtectedRoute><Layout><AdminProviders /></Layout></ProtectedRoute>} />
+            
+          {/* Care Routes - Protected */}
+          <Route path="/care" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
+          <Route path="/care/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
+          <Route path="/care/users/add" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
+          <Route path="/care/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
+          <Route path="/care/users/permissions" element={<ProtectedRoute><Layout><AdminV2Permissions /></Layout></ProtectedRoute>} />
+          <Route path="/care/medications" element={<ProtectedRoute><Layout><AdminV2Medications /></Layout></ProtectedRoute>} />
+          <Route path="/care/medications/schedule" element={<ProtectedRoute><Layout><AdminV2MedicationsSchedule /></Layout></ProtectedRoute>} />
+          <Route path="/care/medications/history" element={<ProtectedRoute><Layout><AdminV2MedicationsHistory /></Layout></ProtectedRoute>} />
+          <Route path="/care/care-tasks" element={<ProtectedRoute><Layout><AdminV2CareTasks /></Layout></ProtectedRoute>} />
+          <Route path="/care/care-tasks/schedule" element={<ProtectedRoute><Layout><AdminV2CareTasksSchedule /></Layout></ProtectedRoute>} />
+          <Route path="/care/care-tasks/history" element={<ProtectedRoute><Layout><AdminV2CareTasksHistory /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment" element={<ProtectedRoute><Layout><AdminV2Equipment /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/history" element={<ProtectedRoute><Layout><AdminV2EquipmentHistory /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/shipments" element={<ProtectedRoute><Layout><AdminV2Shipments /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/shipments/:id" element={<ProtectedRoute><Layout><AdminV2ShipmentDetail /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/alerts" element={<ProtectedRoute><Layout><AdminV2ShipmentAlerts /></Layout></ProtectedRoute>} />
+          <Route path="/care/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
+          <Route path="/care/providers" element={<ProtectedRoute><Layout><AdminV2Providers /></Layout></ProtectedRoute>} />
+          <Route path="/care/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
+          <Route path="/care/schedule" element={<ProtectedRoute><Layout><AdminV2Schedule /></Layout></ProtectedRoute>} />
+            
+          {/* Care Vitals Routes */}
+          <Route path="/care/vitals" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
+          <Route path="/care/vitals/history" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
+            
+          {/* Care Symptoms Routes */}
+          <Route path="/care/symptoms" element={<ProtectedRoute><Layout><AdminV2Symptoms /></Layout></ProtectedRoute>} />
+          <Route path="/care/symptoms/active" element={<ProtectedRoute><Layout><AdminV2Symptoms /></Layout></ProtectedRoute>} />
+          <Route path="/care/symptoms/history" element={<ProtectedRoute><Layout><AdminV2Symptoms /></Layout></ProtectedRoute>} />
+            
+          {/* Care Nutrition Routes */}
+          <Route path="/care/nutrition" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/intake" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/output" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/schedules" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/goals" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+            
+          {/* Care Profile Routes (Patient-specific) */}
+          <Route path="/care/profile" element={<ProtectedRoute><Layout><AdminV2ProfileSummary /></Layout></ProtectedRoute>} />
+          <Route path="/care/profile/providers" element={<ProtectedRoute><Layout><AdminV2Providers /></Layout></ProtectedRoute>} />
+          <Route path="/care/profile/diagnoses" element={<ProtectedRoute><Layout><AdminV2Diagnoses /></Layout></ProtectedRoute>} />
+          <Route path="/care/profile/implants" element={<ProtectedRoute><Layout><AdminV2Implants /></Layout></ProtectedRoute>} />
+          <Route path="/care/profile/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
+          <Route path="/care/profile/mqtt" element={<ProtectedRoute><Layout><AdminV2ProfileMqtt /></Layout></ProtectedRoute>} />
+            
+          {/* Care Monitoring Routes */}
+          <Route path="/care/monitoring" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
+          <Route path="/care/monitoring/history" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
+          <Route path="/care/monitoring/timeline" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
+          <Route path="/care/monitoring/settings" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
+            
+          {/* Care Configuration Routes (System-wide) */}
+          <Route path="/care/configuration" element={<ProtectedRoute><Layout><AdminV2SettingsGeneral /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/account" element={<ProtectedRoute><Layout><AdminV2AccountSettings /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/integrations" element={<ProtectedRoute><Layout><AdminV2Integrations /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/mqtt" element={<ProtectedRoute><Layout><AdminV2Mqtt /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/permissions" element={<ProtectedRoute><Layout><AdminV2Permissions /></Layout></ProtectedRoute>} />
+            
+          <Route path="/care/*" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
+        </Routes>}
+      </Router>
+    </>
+  );
+}
 
-        <div className="charts-column">
-          <div className="chart-block">
-            <div className="chart-inner">
-              <ChartBlock
-                title="SpO₂ Monitor"
-                yLabel="SpO2"
-                yMin={40}
-                yMax={100}
-                color="blue"
-                dataset={datasets.spo2}
-                showXaxis={false}
-                showYaxis={true}
-              />
-            </div>
-          </div>
-
-          <div className="chart-block">
-            <div className="chart-inner">
-              <ChartBlock
-                title="BPM"
-                yLabel="BPM"
-                yMin={40}
-                yMax={160}
-                color="green"
-                dataset={datasets.bpm}
-                showXaxis={false}
-                showYaxis={true}
-              />
-            </div>
-          </div>
-
-          <div className="chart-block">
-            <div className="chart-inner">
-              <ChartBlock
-                title="Perfusion Monitor"
-                yLabel="PAI (%)"
-                yMin={40}
-                yMax={160}
-                color="orange"
-                dataset={datasets.perfusion}
-                showXaxis={true}
-                showYaxis={true}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="right-column">
-          <div className="bp-container">
-            <BloodPressureCard bpHistory={bpHistory} />
-          </div>
-
-          <div className="temp-container">
-            <TemperatureCard tempHistory={tempHistory} />
-          </div>
-        </div>
-      </div>
-
-      {/* Settings Modal */}
-      <ModalBase
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        title="Settings"
-      >
-        <SettingsForm />
-      </ModalBase>
-
-      {/* Ventilator Modal - Example */}
-      <ModalBase
-        isOpen={isVentModalOpen}
-        onClose={() => setIsVentModalOpen(false)}
-        title="Ventilator Settings"
-      >
-        <div>Ventilator settings content here...</div>
-      </ModalBase>
-
-      {/* Pulse Oximeter Modal - Example */}
-      <ModalBase
-        isOpen={isPulseOxModalOpen}
-        onClose={() => setIsPulseOxModalOpen(false)}
-        title="Pulse Oximeter Alerts"
-      >
-        <PulseOxModal
-          onClose={() => setIsPulseOxModalOpen(false)}
-          alertsCount={pulseOxAlerts}
-          onAlertsViewed={handlePulseOxAlertsViewed}
-          onAlertAcknowledged={handleAlertAcknowledged}
-        />
-      </ModalBase>
-
-      {/* Manual Vitals Entry Modal */}
-      <ModalBase
-        isOpen={isVitalsModalOpen}
-        onClose={() => setIsVitalsModalOpen(false)}
-        title="Manual Vitals Entry"
-      >
-        <VitalsForm 
-          onSave={(data) => {
-            console.log("Vitals saved:", data);
-            // Potentially update any state here as needed
-          }}
-          onClose={() => setIsVitalsModalOpen(false)}
-        />
-      </ModalBase>
-    </div>
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

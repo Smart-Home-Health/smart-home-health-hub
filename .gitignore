@@ -6,3 +6,10 @@
 /.idea
 *.pyc
 *.db
+.climpire-worktrees
+.climpire
+# Docker
+*.sql
+
+.env.docker
+docs/*
