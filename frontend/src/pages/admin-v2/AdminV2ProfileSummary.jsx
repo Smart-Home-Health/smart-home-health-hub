@@ -58,6 +58,8 @@ const AdminV2ProfileSummary = () => {
   const [loadingImplants, setLoadingImplants] = useState(false);
   const [vitalsSummary, setVitalsSummary] = useState(null);
   const [loadingVitals, setLoadingVitals] = useState(false);
+  const [pulseOxSummary, setPulseOxSummary] = useState(null);
+  const [loadingPulseOx, setLoadingPulseOx] = useState(false);
   const [nutritionSummary, setNutritionSummary] = useState([]);
   const [loadingNutrition, setLoadingNutrition] = useState(false);
   const [nutritionOutput, setNutritionOutput] = useState([]);
@@ -175,6 +177,25 @@ const AdminV2ProfileSummary = () => {
         setLoadingVitals(false);
       }
     };
+
+    // Fetch pulse-ox hourly aggregation for SpO2 / heart rate trends
+    const fetchPulseOxSummary = async () => {
+      setLoadingPulseOx(true);
+      try {
+        const response = await fetch(
+          `${config.apiUrl}/api/vitals/patient/${selectedPatient.id}/pulse-ox-summary?days=30`,
+          { credentials: 'include' }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setPulseOxSummary(data);
+        }
+      } catch (error) {
+        console.error('Error fetching pulse-ox summary:', error);
+      } finally {
+        setLoadingPulseOx(false);
+      }
+    };
     
     // Fetch nutrition intake summary (30-day with goals)
     const fetchNutritionSummary = async () => {
@@ -221,6 +242,7 @@ const AdminV2ProfileSummary = () => {
     fetchProviders();
     fetchImplants();
     fetchVitalsSummary();
+    fetchPulseOxSummary();
     fetchNutritionSummary();
     fetchNutritionOutput();
   }, [selectedPatient]);
@@ -234,6 +256,24 @@ const AdminV2ProfileSummary = () => {
       avg: d.avg,
       max: d.max
     }));
+  };
+
+  // Helper to format hourly pulse-ox data for SpO2 and BPM charts
+  const formatPulseOxChartData = (key) => {
+    if (!pulseOxSummary || !pulseOxSummary[key]) return [];
+    return pulseOxSummary[key].map(d => {
+      const dt = new Date(d.date);
+      return {
+        date: dt.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+        }),
+        min: d.min,
+        avg: d.avg,
+        max: d.max,
+      };
+    });
   };
 
   // Helper to format nutrition data as % deviation from goal
@@ -451,37 +491,45 @@ const AdminV2ProfileSummary = () => {
               <div className="empty-state">No vitals data available</div>
             ) : (
               <div className="vitals-charts-grid">
-                {/* SpO2 Chart */}
+                {/* SpO2 Chart (from pulse oximeter, hourly) */}
                 <div className="vital-chart-container">
-                  <h3>SpO2 (%)</h3>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <ComposedChart data={formatVitalChartData('spo2')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={6} />
-                      <YAxis domain={[88, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }} />
-                      <ReferenceLine y={92} stroke="#ef4444" strokeDasharray="3 3" />
-                      <Area type="monotone" dataKey="max" stroke="none" fill="#3b82f6" fillOpacity={0.15} />
-                      <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
-                      <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls />
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                  <h3>SpO2 (%) <span className="chart-subtitle">— pulse ox, hourly</span></h3>
+                  {loadingPulseOx ? (
+                    <div className="loading-state">Loading…</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={180}>
+                      <ComposedChart data={formatPulseOxChartData('spo2')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={40} />
+                        <YAxis domain={[80, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }} />
+                        <ReferenceLine y={92} stroke="#ef4444" strokeDasharray="3 3" />
+                        <Area type="monotone" dataKey="max" stroke="none" fill="#3b82f6" fillOpacity={0.15} />
+                        <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
+                        <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
 
-                {/* Heart Rate Chart */}
+                {/* Heart Rate Chart (from pulse oximeter, hourly) */}
                 <div className="vital-chart-container">
-                  <h3>Heart Rate (BPM)</h3>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <ComposedChart data={formatVitalChartData('heart_rate')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={6} />
-                      <YAxis domain={[50, 120]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }} />
-                      <Area type="monotone" dataKey="max" stroke="none" fill="#ef4444" fillOpacity={0.15} />
-                      <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
-                      <Line type="monotone" dataKey="avg" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls />
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                  <h3>Heart Rate (BPM) <span className="chart-subtitle">— pulse ox, hourly</span></h3>
+                  {loadingPulseOx ? (
+                    <div className="loading-state">Loading…</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={180}>
+                      <ComposedChart data={formatPulseOxChartData('heart_rate')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={40} />
+                        <YAxis domain={[40, 140]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }} />
+                        <Area type="monotone" dataKey="max" stroke="none" fill="#ef4444" fillOpacity={0.15} />
+                        <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
+                        <Line type="monotone" dataKey="avg" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
 
                 {/* Respiratory Rate Chart */}
