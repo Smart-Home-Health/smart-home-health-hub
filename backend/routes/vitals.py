@@ -392,10 +392,10 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                     })
                 
             # Dynamically handle any remaining vitals (excluding already processed ones)
-            processed_keys = ["datetime", "timestamp", "bp", "temp", "nutrition", "weight", "notes", "bathroom_type", "bathroom_size", "vital_type", "value"]
+            processed_keys = ["datetime", "timestamp", "bp", "temp", "nutrition", "weight", "notes", "bathroom_type", "bathroom_size", "vital_type", "value", "patient_id"]
             for key, value in vital_data.items():
                 if key not in processed_keys and value is not None and value != "":
-                    vital_id = save_vital(db, key, value, datetime_val, notes)
+                    vital_id = save_vital(db, key, value, datetime_val, notes, patient_id=patient_id)
                     if vital_id:
                         vitals_saved.append({
                             'type': key,
