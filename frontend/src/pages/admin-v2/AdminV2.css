@@ -7814,6 +7814,13 @@
   grid-column: span 2;
 }
 
+.vital-chart-container .chart-subtitle {
+  color: #9ca3af;
+  font-size: 0.75rem;
+  font-weight: 400;
+  margin-left: 0.4rem;
+}
+
 /* Nutrition Charts */
 .nutrition-chart-container {
   background: #0d1117;

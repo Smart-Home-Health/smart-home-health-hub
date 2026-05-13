@@ -51,45 +51,45 @@ async def get_dashboard_summary(db: Session = Depends(get_db), _: bool = Depends
         today = date.today()
         now = datetime.now()
         
-        # Get all patients
-        patients = db.query(Patient).order_by(Patient.first_name, Patient.last_name).all()
-        
+        patients = (
+            db.query(Patient)
+            .filter(Patient.is_active == True)
+            .order_by(Patient.first_name, Patient.last_name)
+            .all()
+        )
+
         patient_list = []
         total_meds_due = 0
         total_tasks_due = 0
         total_equipment_due = 0
-        
+
         for patient in patients:
-            # Calculate due counts for this patient
             meds_due = get_medications_due_count(db, patient.id, today, now)
             tasks_due = get_care_tasks_due_count(db, patient.id, today, now)
             equipment_due = get_equipment_due_count(db, patient.id, today)
-            
-            # Only count active patients in totals
-            if patient.is_active:
-                total_meds_due += meds_due
-                total_tasks_due += tasks_due
-                total_equipment_due += equipment_due
-            
+
+            total_meds_due += meds_due
+            total_tasks_due += tasks_due
+            total_equipment_due += equipment_due
+
             patient_list.append({
                 "id": patient.id,
                 "first_name": patient.first_name,
                 "last_name": patient.last_name,
                 "name": f"{patient.first_name} {patient.last_name}",
                 "date_of_birth": patient.date_of_birth.isoformat() if patient.date_of_birth else None,
-                "room": None,  # Room field not in schema, could be added later
+                "room": None,
                 "is_active": patient.is_active,
-                "status": "active" if patient.is_active else "inactive",
+                "status": "active",
                 "due_counts": {
                     "medications": meds_due,
                     "tasks": tasks_due,
                     "equipment": equipment_due
                 }
             })
-        
-        # Calculate summary stats
+
         total_patients = len(patients)
-        active_patients = len([p for p in patients if p.is_active])
+        active_patients = total_patients
         
         return {
             "patients": patient_list,
