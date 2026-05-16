@@ -202,8 +202,12 @@ const AdminV2Schedule = () => {
       setError(null);
       
       const dateParam = formatDateForApi(selectedDate);
+      // Pass user's TZ offset (minutes user-local is ahead of UTC). The backend
+      // uses this to compute the user-local day's UTC range so cron firings,
+      // completion logs, and PRN doses all bucket onto the right day.
+      const tzOffsetMinutes = -new Date().getTimezoneOffset();
       const response = await fetch(
-        `${config.apiUrl}/api/schedule/daily?patient_id=${selectedPatient.id}&target_date=${dateParam}`,
+        `${config.apiUrl}/api/schedule/daily?patient_id=${selectedPatient.id}&target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}`,
         { credentials: 'include' }
       );
 

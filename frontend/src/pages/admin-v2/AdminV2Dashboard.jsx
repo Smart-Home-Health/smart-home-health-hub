@@ -270,22 +270,22 @@ const AdminV2Dashboard = () => {
 
                 {/* Due Counters */}
                 <div className="admin-v2-due-counters">
-                  <Link 
-                    to={`/care/medications?patient=${patient.id}`}
+                  <Link
+                    to={`/care/medications/schedule?patient=${patient.id}`}
                     className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.medications || 0)}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.medications || 0}</p>
                     <p className="admin-v2-due-label">Meds Due</p>
                   </Link>
-                  <Link 
+                  <Link
                     to={`/care/equipment?patient=${patient.id}`}
                     className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.equipment || 0)}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.equipment || 0}</p>
                     <p className="admin-v2-due-label">Equip Due</p>
                   </Link>
-                  <Link 
-                    to={`/care/care-tasks?patient=${patient.id}`}
+                  <Link
+                    to={`/care/care-tasks/schedule?patient=${patient.id}`}
                     className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.tasks || 0)}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.tasks || 0}</p>
