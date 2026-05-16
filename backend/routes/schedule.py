@@ -30,6 +30,28 @@ logger = logging.getLogger("app")
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 
 
+TIMING_FLAG_THRESHOLD_MINUTES = 15
+
+
+def _compute_timing_flags(scheduled_dt: Optional[datetime], administered_at: Optional[datetime]):
+    """
+    Return (administered_early, administered_late) by comparing the actual
+    administered time to the scheduled time. The 15-minute threshold matches
+    `crud.medications.administer_medication` so flags are consistent across
+    all log paths.
+    """
+    if scheduled_dt is None or administered_at is None:
+        return False, False
+    sched = scheduled_dt if scheduled_dt.tzinfo else scheduled_dt.replace(tzinfo=timezone.utc)
+    given = administered_at if administered_at.tzinfo else administered_at.replace(tzinfo=timezone.utc)
+    diff_minutes = (given - sched).total_seconds() / 60
+    if diff_minutes < -TIMING_FLAG_THRESHOLD_MINUTES:
+        return True, False
+    if diff_minutes > TIMING_FLAG_THRESHOLD_MINUTES:
+        return False, True
+    return False, False
+
+
 def parse_scheduled_time(scheduled_time_str: str) -> datetime:
     """
     Parse scheduled time string and return as UTC-aware datetime.
@@ -64,6 +86,10 @@ def parse_scheduled_time(scheduled_time_str: str) -> datetime:
 async def get_daily_schedule(
     target_date: str = Query(None, description="Date in YYYY-MM-DD format, defaults to today"),
     patient_id: int = Query(..., description="Patient ID"),
+    tz_offset_minutes: Optional[int] = Query(
+        None,
+        description="Minutes the caller's local time is ahead of UTC. When provided, the day boundary is the caller's local midnight rather than UTC midnight.",
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -77,9 +103,9 @@ async def get_daily_schedule(
             schedule_date = datetime.strptime(target_date, "%Y-%m-%d").date()
         else:
             schedule_date = date.today()
-        
+
         # Get all scheduled items (now includes completion status from joined logs)
-        medications = get_scheduled_medications(db, schedule_date, patient_id)
+        medications = get_scheduled_medications(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
         nutrition_items = get_scheduled_nutrition(db, schedule_date, patient_id)
         care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id)
         
@@ -106,7 +132,9 @@ async def get_daily_schedule(
                 "completed": med["completed"],
                 "completed_at": med["completed_at"],
                 "completed_by": med["completed_by"],
-                "type": "medication"
+                "is_prn": med.get("is_prn", False),
+                "log_id": med.get("log_id"),
+                "type": "medication",
             })
         
         for nutr in nutrition_items:
@@ -206,7 +234,14 @@ async def complete_medication(
         if dose_amount > 0 and medication.quantity is not None:
             medication.quantity = max(0, medication.quantity - float(dose_amount))
         
-        # Create log entry
+        # Compute timing flags from actual completed_at vs scheduled time —
+        # skipped doses (dose_amount == 0) are explicitly "not an administration"
+        # so they don't carry early/late flags.
+        if dose_amount > 0:
+            early_flag, late_flag = _compute_timing_flags(scheduled_dt, completed_at)
+        else:
+            early_flag, late_flag = False, False
+
         log = MedicationLog(
             medication_id=medication.id,
             patient_id=data.patient_id,
@@ -215,8 +250,8 @@ async def complete_medication(
             dose_amount=dose_amount,
             is_scheduled=True,
             scheduled_time=scheduled_dt,
-            administered_early=False,
-            administered_late=False,
+            administered_early=early_flag,
+            administered_late=late_flag,
             notes=data.notes,
             created_at=utc_now()
         )
@@ -438,6 +473,10 @@ async def complete_bulk(
                         if dose_amount > 0 and medication.quantity is not None:
                             medication.quantity = max(0, medication.quantity - float(dose_amount))
                         
+                        if dose_amount > 0:
+                            early_flag, late_flag = _compute_timing_flags(scheduled_dt, completed_at)
+                        else:
+                            early_flag, late_flag = False, False
                         log = MedicationLog(
                             medication_id=medication.id,
                             patient_id=item.patient_id,
@@ -446,6 +485,8 @@ async def complete_bulk(
                             dose_amount=dose_amount,
                             is_scheduled=True,
                             scheduled_time=scheduled_dt,
+                            administered_early=early_flag,
+                            administered_late=late_flag,
                             notes=item.notes,
                             created_at=utc_now()
                         )

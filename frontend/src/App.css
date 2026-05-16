@@ -211,17 +211,19 @@ html, body, #root {
   border: none;
 }
 
-/* Dashboard Modal Styles - Full width below header */
+/* Dashboard Modal Styles - covers the right 75% below the header, leaving
+   the values column (left 25%) visible. The mobile rule below overrides
+   to full-width. */
 .dashboard-modal-overlay {
   position: fixed;
   top: 10vh; /* Start after header (10% of viewport height) */
-  left: 0;
+  left: 25vw; /* Leave the values column uncovered on desktop */
   right: 0;
   bottom: 0;
-  width: 100vw; /* Full viewport width */
-  height: 90vh; /* Full height below header */
+  width: 75vw;
+  height: 90vh;
   background-color: rgba(0, 0, 0, 0.85);
-  display: block; /* Change from flex to block for full width */
+  display: block;
   z-index: 1000;
   backdrop-filter: blur(1px);
   margin: 0;

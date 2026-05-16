@@ -237,31 +237,12 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
                 # Still allow administration but warn about low stock
             med.quantity = max(0, med.quantity - float(dose_amount))
         
-        # Calculate timing flags if this is a scheduled dose
-        administered_early = False
-        administered_late = False
-        
         # Use timezone-aware UTC datetime
         now = datetime.now(timezone.utc)
-        
-        if schedule_id and scheduled_time:
-            # Handle both datetime objects (from Pydantic) and string (legacy)
-            if isinstance(scheduled_time, datetime):
-                scheduled_dt = scheduled_time
-                # Ensure it's timezone-aware
-                if scheduled_dt.tzinfo is None:
-                    scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
-            else:
-                scheduled_dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
-            
-            diff_minutes = (now - scheduled_dt).total_seconds() / 60
-            
-            if diff_minutes < -15:  # More than 15 minutes early
-                administered_early = True
-            elif diff_minutes > 15:  # More than 15 minutes late
-                administered_late = True
-        
-        # Determine the log timestamp. Priority:
+
+        # Resolve the actual administered timestamp first, since the early/late
+        # flags must be computed against that — not against request-time.
+        # Priority:
         #   1. explicit `administered_at` from the caller (PRN retro-logging)
         #   2. scheduled_time for skipped doses (keep skip on timeline)
         #   3. now
@@ -281,6 +262,27 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
                 log_time = datetime.fromisoformat(str(scheduled_time).replace('Z', '+00:00'))
         else:
             log_time = now
+
+        # Calculate timing flags only for actual administrations against a
+        # scheduled dose. Skipped doses (dose_amount == 0) are not an
+        # administration so they don't carry early/late flags.
+        administered_early = False
+        administered_late = False
+
+        if schedule_id and scheduled_time and float(dose_amount) > 0:
+            if isinstance(scheduled_time, datetime):
+                scheduled_dt = scheduled_time
+                if scheduled_dt.tzinfo is None:
+                    scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+            else:
+                scheduled_dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
+
+            diff_minutes = (log_time - scheduled_dt).total_seconds() / 60
+
+            if diff_minutes < -15:  # More than 15 minutes early
+                administered_early = True
+            elif diff_minutes > 15:  # More than 15 minutes late
+                administered_late = True
 
         # Record log
         log = MedicationLog(

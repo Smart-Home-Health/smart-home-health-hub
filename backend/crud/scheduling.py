@@ -616,13 +616,34 @@ from schemas.nutrition_schedule import NutritionSchedule
 from schemas.nutrition_intake import NutritionIntake
 
 
-def get_scheduled_medications(db: Session, target_date, patient_id: int):
+def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offset_minutes=None):
     """
     Get all medications scheduled for a specific date for a patient.
     Only includes medications where start_date <= target_date (or no start_date).
     Returns completion status by joining to medication_log.
+
+    `tz_offset_minutes` is the minutes the caller's local time is ahead of UTC
+    (so US Eastern in DST = -240). When provided, the day boundary is the
+    caller's local midnight rather than the server's UTC midnight. Without it
+    the function falls back to UTC-day semantics for backward compatibility.
     """
     try:
+        # Compute the UTC range that corresponds to the caller's local day.
+        # local_start_utc = midnight local converted to UTC.
+        if tz_offset_minutes is None:
+            local_start_utc = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            local_end_utc = local_start_utc + timedelta(days=1)
+        else:
+            offset = timedelta(minutes=tz_offset_minutes)
+            local_midnight_naive = datetime.combine(target_date, datetime.min.time())
+            local_start_utc = (local_midnight_naive - offset).replace(tzinfo=timezone.utc)
+            local_end_utc = local_start_utc + timedelta(days=1)
+
+        # MedicationLog.scheduled_time is stored as naive UTC (cron firings'
+        # wall-clock values). Compare against the same UTC range stripped of tzinfo.
+        local_start_naive = local_start_utc.replace(tzinfo=None)
+        local_end_naive = local_end_utc.replace(tzinfo=None)
+
         # Get all active medication schedules for this patient
         schedules = db.query(MedicationSchedule).filter(
             MedicationSchedule.active == True,
@@ -635,70 +656,104 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int):
             # Exclude if end_date is set and < target_date
             (Medication.end_date == None) | (Medication.end_date >= datetime.combine(target_date, datetime.min.time()))
         ).all()
-        
-        # Get all medication logs for the target date for this patient
-        # Using scheduled_time date to match, which is more accurate than administered_at
+
+        # Completion logs whose stored scheduled_time falls inside the caller's
+        # local day (in UTC range, since the stored value is the firing's UTC).
         med_logs = db.query(MedicationLog).filter(
             MedicationLog.patient_id == patient_id,
             MedicationLog.schedule_id.isnot(None),
-            cast(MedicationLog.scheduled_time, Date) == target_date
+            MedicationLog.scheduled_time >= local_start_naive,
+            MedicationLog.scheduled_time < local_end_naive,
         ).all()
-        
-        # Build a lookup dict: {(schedule_id, HH:MM): log}
+
+        # Build a lookup keyed by (schedule_id, UTC HH:MM of firing).
         log_lookup = {}
         for log in med_logs:
             if log.scheduled_time:
                 key = (log.schedule_id, log.scheduled_time.strftime('%H:%M'))
                 log_lookup[key] = log
-        
+
         scheduled_meds = []
-        
+
         for schedule in schedules:
             try:
-                # Cron expressions are stored in UTC
-                # We need to find UTC times that fall within the target LOCAL date
-                # Start with midnight UTC of target_date minus local offset buffer (to catch edge cases)
-                start_of_day_utc = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-                
-                # Initialize croniter with a time before the target date (in UTC)
-                base_time = start_of_day_utc - timedelta(days=1)
+                # Walk croniter forward from just before the local-day window in UTC.
+                base_time = local_start_utc - timedelta(hours=1)
                 cron = croniter(schedule.cron_expression, base_time)
-                
-                # Find all scheduled times, checking their LOCAL date
+
                 while True:
                     next_time_utc = cron.get_next(datetime).replace(tzinfo=timezone.utc)
-                    # Convert to local time for date comparison and display
-                    next_time_local = next_time_utc.astimezone()
-                    
-                    # Stop if we're past the target date in local time
-                    if next_time_local.date() > target_date:
+                    if next_time_utc >= local_end_utc:
                         break
-                    
-                    if next_time_local.date() == target_date:
-                        # Check if completed - use local time for lookup since logs store local times
-                        key = (schedule.id, next_time_local.strftime('%H:%M'))
-                        log = log_lookup.get(key)
-                        
-                        scheduled_meds.append({
-                            'schedule_id': schedule.id,
-                            'medication_id': schedule.medication_id,
-                            'medication_name': schedule.medication.name,
-                            'dose_amount': schedule.dose_amount,
-                            'dose_unit': schedule.medication.quantity_unit,
-                            'scheduled_time': next_time_local.replace(tzinfo=None),  # Local time for display
-                            'description': schedule.description,
-                            'cron_expression': schedule.cron_expression,
-                            # Completion info
-                            'completed': log is not None,
-                            'completed_at': log.administered_at.isoformat() if log else None,
-                            'completed_by': log.administered_by if log else None
-                        })
+                    if next_time_utc < local_start_utc:
+                        continue
+
+                    # Key by the firing's UTC HH:MM (matches how scheduled_time
+                    # is stored on logs — naive but holding the UTC wall-clock).
+                    key = (schedule.id, next_time_utc.strftime('%H:%M'))
+                    log = log_lookup.get(key)
+
+                    scheduled_meds.append({
+                        'schedule_id': schedule.id,
+                        'medication_id': schedule.medication_id,
+                        'medication_name': schedule.medication.name,
+                        'dose_amount': schedule.dose_amount,
+                        'dose_unit': schedule.medication.quantity_unit,
+                        # Real UTC ISO with offset; the frontend converts to
+                        # user-local for display and hour/minute bucketing.
+                        'scheduled_time': next_time_utc,
+                        'description': schedule.description,
+                        'cron_expression': schedule.cron_expression,
+                        'completed': log is not None,
+                        'completed_at': log.administered_at.isoformat() if log else None,
+                        'completed_by': log.administered_by if log else None,
+                    })
             except Exception as cron_error:
                 logger.error(f"Error processing cron expression {schedule.cron_expression}: {cron_error}")
                 continue
         
+        # PRN / ad-hoc administrations whose real-UTC administered_at falls
+        # within the caller's local day. Surface them on the schedule view at
+        # the hour they were administered so caregivers see a unified picture
+        # of what's been given. is_prn=True lets the frontend render them as
+        # an info row (no mark-taken / skip controls).
+        prn_logs = db.query(MedicationLog).filter(
+            MedicationLog.patient_id == patient_id,
+            MedicationLog.schedule_id.is_(None),
+            MedicationLog.dose_amount > 0,
+            MedicationLog.administered_at >= local_start_utc,
+            MedicationLog.administered_at < local_end_utc,
+        ).all()
+
+        for log in prn_logs:
+            medication = log.medication
+            if medication is None:
+                continue
+            given_at = log.administered_at
+            if given_at is None:
+                continue
+            # Normalize to UTC-aware so the frontend can convert to user-local.
+            if given_at.tzinfo is None:
+                given_at = given_at.replace(tzinfo=timezone.utc)
+            scheduled_meds.append({
+                'schedule_id': None,
+                'medication_id': medication.id,
+                'medication_name': medication.name,
+                'dose_amount': log.dose_amount,
+                'dose_unit': medication.quantity_unit,
+                'scheduled_time': given_at,
+                'description': None,
+                'cron_expression': None,
+                'completed': True,
+                'completed_at': given_at.isoformat(),
+                'completed_by': log.administered_by,
+                'is_prn': True,
+                'log_id': log.id,
+            })
+
+        # Sort by the UTC instant (datetimes here are all UTC-aware now).
         return sorted(scheduled_meds, key=lambda x: x['scheduled_time'])
-        
+
     except Exception as e:
         logger.error(f"Error getting scheduled medications: {e}")
         return []
