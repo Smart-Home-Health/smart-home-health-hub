@@ -12,7 +12,6 @@ from models.care_tasks import (
     CareTaskCreate,
     CareTaskUpdate,
     CareTaskResponse,
-    CareTaskComplete,
     CareTaskScheduleCreate,
     CareTaskScheduleUpdate,
     CareTaskScheduleResponse,
@@ -24,9 +23,9 @@ from models.care_tasks import (
     CareTaskLogResponse,
 )
 from crud.care_tasks import (
-    add_care_task, get_care_tasks, get_care_task, update_care_task, 
-    delete_care_task, toggle_care_task_active, log_care_task,
-    add_care_task_category, get_care_task_categories, update_care_task_category, 
+    add_care_task, get_care_tasks, get_care_task, update_care_task,
+    delete_care_task, toggle_care_task_active,
+    add_care_task_category, get_care_task_categories, update_care_task_category,
     delete_care_task_category, get_care_task_logs, get_recent_care_task_completions,
     get_care_task_completion_stats, get_overdue_care_tasks
 )
@@ -158,29 +157,6 @@ async def toggle_care_task_active_endpoint(task_id: int, db: Session = Depends(g
         return JSONResponse(
             status_code=500,
             content={"detail": f"Error toggling care task status: {str(e)}"}
-        )
-
-
-@router.post("/care-tasks/{task_id}/complete")
-async def complete_care_task_endpoint(task_id: int, data: CareTaskComplete, db: Session = Depends(get_db)):
-    """Complete a care task"""
-    try:
-        log_id = log_care_task(
-            db=db,
-            task_id=task_id,
-            completion_status=data.status,
-            notes=data.notes,
-            completed_by=data.completed_by
-        )
-        if log_id:
-            return {"id": log_id, "status": "success"}
-        else:
-            return JSONResponse(status_code=500, content={"detail": "Failed to complete care task"})
-    except Exception as e:
-        logger.error(f"Error completing care task {task_id}: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error completing care task: {str(e)}"}
         )
 
 

@@ -74,7 +74,8 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/equipment/alerts', label: 'Alerts' },
     ],
     nutrition: [
-      { path: '/care/nutrition', label: 'Intake Log' },
+      { path: '/care/nutrition', label: 'Overview' },
+      { path: '/care/nutrition/intake', label: 'Intake Log' },
       { path: '/care/nutrition/output', label: 'Output Log' },
       { path: '/care/nutrition/schedules', label: 'Schedules' },
       { path: '/care/nutrition/goals', label: 'Daily Goals' },

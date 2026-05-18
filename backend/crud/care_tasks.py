@@ -312,37 +312,6 @@ def toggle_care_task_active(db: Session, task_id):
 
 
 # --- CareTaskLog CRUD ---
-def log_care_task(db: Session, task_id, completion_status='completed', notes=None, completed_by=None):
-    """
-    Log completion of a care task
-    
-    Args:
-        task_id: ID of the care task
-        completion_status: 'completed', 'skipped', 'partial', etc.
-        notes: Optional notes about the completion
-        completed_by: Optional identifier of who completed the task
-    """
-    try:
-        now = utc_now()
-        log = CareTaskLog(
-            task_id=task_id,
-            completed_at=now,
-            completion_status=completion_status,
-            notes=notes,
-            completed_by=completed_by,
-            created_at=now
-        )
-        db.add(log)
-        db.commit()
-        db.refresh(log)
-        logger.info(f"Care task logged: {task_id} - {completion_status}")
-        return log.id
-    except Exception as e:
-        logger.error(f"Error logging care task: {e}")
-        db.rollback()
-        return None
-
-
 def get_care_task_logs(db: Session, task_id=None, limit=50, start_date=None, end_date=None,
                        patient_id=None, task_name=None, category_id=None, status_filter=None):
     """
@@ -359,46 +328,48 @@ def get_care_task_logs(db: Session, task_id=None, limit=50, start_date=None, end
         status_filter: Filter by completion status
     """
     try:
-        query = db.query(CareTaskLog).join(CareTask)
-        
+        query = db.query(CareTaskLog).join(CareTask, CareTaskLog.care_task_id == CareTask.id)
+
         if task_id:
-            query = query.filter(CareTaskLog.task_id == task_id)
-        
+            query = query.filter(CareTaskLog.care_task_id == task_id)
+
         if patient_id:
             query = query.filter(CareTask.patient_id == patient_id)
-        
+
         if task_name:
             query = query.filter(CareTask.name.ilike(f"%{task_name}%"))
-        
+
         if category_id:
             query = query.filter(CareTask.category_id == category_id)
-        
+
         if status_filter:
-            query = query.filter(CareTaskLog.completion_status == status_filter)
-        
+            query = query.filter(CareTaskLog.status == status_filter)
+
         if start_date:
             start_dt = datetime.strptime(start_date, '%Y-%m-%d')
             query = query.filter(CareTaskLog.completed_at >= start_dt)
-        
+
         if end_date:
             end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
             query = query.filter(CareTaskLog.completed_at < end_dt)
-        
+
         logs = query.order_by(CareTaskLog.completed_at.desc()).limit(limit).all()
-        
+
+        # Output keys (task_id / completion_status / completed_by) are kept
+        # for the frontend; only the DB-column names changed.
         return [
             {
                 'id': log.id,
-                'task_id': log.task_id,
-                'task_name': log.task.name,
-                'task_description': log.task.description,
-                'task_category': log.task.category.name if log.task.category else None,
-                'task_category_id': log.task.category_id,
-                'task_category_color': log.task.category.color if log.task.category else '#6f42c1',
+                'task_id': log.care_task_id,
+                'task_name': log.care_task.name,
+                'task_description': log.care_task.description,
+                'task_category': log.care_task.category.name if log.care_task.category else None,
+                'task_category_id': log.care_task.category_id,
+                'task_category_color': log.care_task.category.color if log.care_task.category else '#6f42c1',
                 'completed_at': log.completed_at.isoformat(),
-                'completion_status': log.completion_status,
+                'completion_status': log.status,
                 'notes': log.notes,
-                'completed_by': log.completed_by,
+                'completed_by': log.performed_by,
                 'schedule_id': log.schedule_id,
                 'scheduled_time': log.scheduled_time.isoformat() if log.scheduled_time else None,
                 'created_at': log.created_at.isoformat() if log.created_at else None

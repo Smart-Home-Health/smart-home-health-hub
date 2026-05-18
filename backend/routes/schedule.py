@@ -107,7 +107,7 @@ async def get_daily_schedule(
         # Get all scheduled items (now includes completion status from joined logs)
         medications = get_scheduled_medications(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
         nutrition_items = get_scheduled_nutrition(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
-        care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id)
+        care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
         
         # Build response - completion status already included from get_scheduled_* functions
         result = {
@@ -316,13 +316,13 @@ async def complete_nutrition(
             calories=schedule.default_calories,
             consumed_at=completed_at,
             scheduled_time=scheduled_dt,
-            notes=data.notes or f"Completed from schedule '{schedule.name}' at {scheduled_dt.strftime('%H:%M')}",
+            notes=data.notes,
             created_at=utc_now(),
             updated_at=utc_now()
         )
         db.add(intake)
         db.commit()
-        
+
         return {"success": True, "intake_id": intake.id}
     except Exception as e:
         logger.error(f"Error completing nutrition: {e}")
@@ -521,7 +521,7 @@ async def complete_bulk(
                         calories=schedule.default_calories,
                         consumed_at=completed_at,
                         scheduled_time=scheduled_dt,
-                        notes=item.notes or f"Completed from schedule '{schedule.name}' at {scheduled_dt.strftime('%H:%M')}",
+                        notes=item.notes,
                         created_at=utc_now(),
                         updated_at=utc_now()
                     )

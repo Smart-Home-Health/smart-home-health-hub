@@ -85,7 +85,7 @@ const AdminV2CareTasksSchedule = () => {
       setError(null);
       
       const response = await fetch(
-        `${config.apiUrl}/api/schedules/daily?patient_id=${selectedPatient.id}`,
+        `${config.apiUrl}/api/care-task-schedules/daily?patient_id=${selectedPatient.id}`,
         { credentials: 'include' }
       );
 
