@@ -125,14 +125,16 @@ export default function AdminV2Integrations() {
 
       const newIntegration = await res.json();
       
-      // If OAuth integration, start OAuth flow
+      // If OAuth integration, start OAuth flow (will redirect away on success)
       if (selectedIntegration.auth_type === 'oauth2') {
         await startOAuthFlow(newIntegration.id);
+        // If we reach here, redirect didn't happen — keep modal open
+        return;
       } else {
         setSuccess(`${selectedIntegration.name} integration added successfully`);
         await fetchIntegrations();
       }
-      
+
       setShowAddModal(false);
       setSelectedIntegration(null);
       setNewSettings({});
@@ -144,23 +146,19 @@ export default function AdminV2Integrations() {
   };
 
   const startOAuthFlow = async (integrationId) => {
-    try {
-      const redirectUrl = `${window.location.origin}/care/integrations`;
-      const res = await fetch(
-        `${API_BASE_URL}/api/integrations/patient/${patientId}/${integrationId}/oauth/start?redirect_url=${encodeURIComponent(redirectUrl)}`,
-        { credentials: 'include' }
-      );
+    const redirectUrl = `${window.location.origin}/care/integrations`;
+    const res = await fetch(
+      `${API_BASE_URL}/api/integrations/patient/${patientId}/${integrationId}/oauth/start?redirect_url=${encodeURIComponent(redirectUrl)}`,
+      { credentials: 'include' }
+    );
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || 'Failed to start OAuth flow');
-      }
-
+    if (!res.ok) {
       const data = await res.json();
-      window.location.href = data.authorization_url;
-    } catch (err) {
-      setError(err.message);
+      throw new Error(data.detail || 'Failed to start OAuth flow');
     }
+
+    const data = await res.json();
+    window.location.href = data.authorization_url;
   };
 
   const handleSync = async (integration) => {
@@ -448,11 +446,12 @@ export default function AdminV2Integrations() {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        {/* Section Title */}
-        <h1 className="schedule-section-title">Integrations</h1>
-        <p className="admin-v2-text-muted" style={{ marginTop: '-0.5rem', marginBottom: '1.5rem' }}>
-          Connect smart devices and health services for {selectedPatient.name}
-        </p>
+        <div className="admin-v2-page-header">
+          <h1 className="admin-v2-page-title">Integrations</h1>
+          <p className="admin-v2-page-subtitle">
+            Connect smart devices and health services for {selectedPatient.name}
+          </p>
+        </div>
 
         {/* Alerts */}
         {error && (
@@ -532,19 +531,19 @@ export default function AdminV2Integrations() {
               )}
             </div>
 
-            {patientIntegrations.length === 0 ? (
+            {patientIntegrations.length === 0 && !hasConfiguredReaders ? (
               <div className="admin-v2-empty-state">
                 <LinkIcon size={48} />
                 <h3>No Integrations Configured</h3>
                 <p className="admin-v2-text-muted">Connect your first integration to start syncing health data.</p>
-                <button 
+                <button
                   className="admin-v2-btn admin-v2-btn-primary"
                   onClick={() => setShowAddModal(true)}
                 >
                   <PlusIcon size={16} /> Add Your First Integration
                 </button>
               </div>
-            ) : (
+            ) : patientIntegrations.length === 0 ? null : (
               <div className="admin-v2-table-container">
                 <table className="admin-v2-table">
                   <thead>
@@ -573,8 +572,17 @@ export default function AdminV2Integrations() {
                         <td>{integration.sync_count || 0}</td>
                         <td>
                           <div className="admin-v2-table-actions">
+                            {integration.is_enabled && integration.auth_type === 'oauth2' && !integration.last_sync_at && (
+                              <button
+                                className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
+                                onClick={() => startOAuthFlow(integration.id)}
+                                title="Connect OAuth"
+                              >
+                                <LinkIcon size={14} /> Connect
+                              </button>
+                            )}
                             {integration.is_enabled && (
-                              <button 
+                              <button
                                 className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
                                 onClick={() => handleSync(integration)}
                                 disabled={syncingId === integration.id}

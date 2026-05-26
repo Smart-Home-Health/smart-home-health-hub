@@ -27,10 +27,41 @@ from crud.medications import (add_medication, get_active_medications, get_inacti
                   get_medication_history, get_medication_names_for_dropdown)
 from crud.settings import get_setting
 from models import Medication
+from utils.early_administration import guard_early_administration
 
 logger = logging.getLogger("app")
 
 router = APIRouter(prefix="/api", tags=["medications"])
+
+
+def _next_due_from_schedules(schedules):
+    """Given a list of medication schedule dicts, return the soonest upcoming
+    occurrence (UTC ISO string) across all active schedules, or None."""
+    from croniter import croniter
+    from datetime import timezone as tz
+    if not schedules:
+        return None
+    now = datetime.now(tz.utc)
+    next_times = []
+    for s in schedules:
+        if not s.get('active'):
+            continue
+        cron = s.get('cron_expression')
+        if not cron:
+            continue
+        try:
+            it = croniter(cron, now)
+            next_times.append(it.get_next(datetime))
+        except Exception:
+            continue
+    if not next_times:
+        return None
+    soonest = min(next_times)
+    # croniter returns naive datetimes; the rest of this code treats schedule
+    # times as UTC, so tag accordingly.
+    if soonest.tzinfo is None:
+        soonest = soonest.replace(tzinfo=tz.utc)
+    return soonest.isoformat()
 
 
 # Medication CRUD endpoints
@@ -99,8 +130,8 @@ async def get_inactive_medications_endpoint(db: Session = Depends(get_db), _: bo
 async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get active medications for admin view - can filter by patient_id or show all"""
     from schemas.medication_log import MedicationLog
-    from sqlalchemy import func
-    
+
+
     try:
         if patient_id:
             # Get medications for specific patient + global medications
@@ -116,26 +147,31 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 (Medication.end_date == None) | (Medication.end_date > datetime.now().date())
             ).order_by(Medication.name).all()
         
-        # Get last administered dates for all medications in one query
+        # Get the most recent log per medication in one query (timestamp + dose
+        # amount). Postgres DISTINCT ON keeps the first row per partition once
+        # ordered, so this is one round-trip instead of a join+subquery.
         med_ids = [med.id for med in medications]
-        last_administered_query = db.query(
+        last_log_query = db.query(
             MedicationLog.medication_id,
-            func.max(MedicationLog.administered_at).label('last_administered')
+            MedicationLog.administered_at,
+            MedicationLog.dose_amount,
         ).filter(
             MedicationLog.medication_id.in_(med_ids)
         )
-        
-        # If patient_id provided, also filter logs by patient
         if patient_id:
-            last_administered_query = last_administered_query.filter(
+            last_log_query = last_log_query.filter(
                 MedicationLog.patient_id == patient_id
             )
+        last_log_query = last_log_query.distinct(MedicationLog.medication_id).order_by(
+            MedicationLog.medication_id,
+            MedicationLog.administered_at.desc(),
+        )
+        last_log_map = {row.medication_id: row for row in last_log_query.all()}
         
-        last_administered_query = last_administered_query.group_by(MedicationLog.medication_id)
-        last_administered_map = {row.medication_id: row.last_administered for row in last_administered_query.all()}
-        
-        return [
-            {
+        result = []
+        for med in medications:
+            schedules = get_medication_schedules(db, med.id)
+            result.append({
                 'id': med.id,
                 'patient_id': med.patient_id,
                 'name': med.name,
@@ -154,11 +190,12 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 'prescriber_id': med.prescriber_id,
                 'prescriber_name': f"{med.prescriber.first_name} {med.prescriber.last_name}".strip() if med.prescriber and (med.prescriber.first_name or med.prescriber.last_name) else (med.prescriber.name if med.prescriber else None),
                 'pharmacy_id': med.pharmacy_id,
-                'last_administered': last_administered_map.get(med.id).isoformat() if last_administered_map.get(med.id) else None,
-                'schedules': get_medication_schedules(db, med.id)
-            }
-            for med in medications
-        ]
+                'last_administered': last_log_map[med.id].administered_at.isoformat() if med.id in last_log_map else None,
+                'last_dose_amount': last_log_map[med.id].dose_amount if med.id in last_log_map else None,
+                'next_due': _next_due_from_schedules(schedules),
+                'schedules': schedules,
+            })
+        return result
     except Exception as e:
         logger.error(f"Error fetching admin active medications: {e}")
         return JSONResponse(status_code=500, content={"detail": str(e)})
@@ -182,8 +219,10 @@ async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = No
                 (Medication.active == False) | (Medication.end_date <= today)
             ).order_by(Medication.name).all()
         
-        return [
-            {
+        result = []
+        for med in medications:
+            schedules = get_medication_schedules(db, med.id)
+            result.append({
                 'id': med.id,
                 'patient_id': med.patient_id,
                 'name': med.name,
@@ -201,10 +240,10 @@ async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = No
                 'is_global': med.patient_id is None,
                 'prescriber_id': med.prescriber_id,
                 'pharmacy_id': med.pharmacy_id,
-                'schedules': get_medication_schedules(db, med.id)
-            }
-            for med in medications
-        ]
+                'next_due': _next_due_from_schedules(schedules),
+                'schedules': schedules,
+            })
+        return result
     except Exception as e:
         logger.error(f"Error fetching admin inactive medications: {e}")
         return JSONResponse(status_code=500, content={"detail": str(e)})
@@ -252,8 +291,21 @@ async def toggle_medication_active_endpoint(med_id: int, db: Session = Depends(g
 @router.post("/medications/{med_id}/administer")
 async def administer_medication_endpoint(med_id: int, data: MedicationAdminister, db: Session = Depends(get_db)):
     """Record a medication administration and deduct from quantity. Pass patient_id when administering a patient-specific medication without a global current patient."""
+    # Block administrations >1h before the scheduled time unless the caller confirmed.
+    # Skip doses (dose_amount == 0) are exempt — they are explicitly *not* an administration.
+    if data.dose_amount > 0:
+        early = guard_early_administration(
+            data.scheduled_time,
+            early_override=data.early_override,
+            item_label="medication",
+            schedule_id=data.schedule_id,
+        )
+        if early is not None:
+            return early
+
     result = administer_medication(
-        db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes, patient_id=data.patient_id
+        db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes,
+        patient_id=data.patient_id, administered_at=data.administered_at,
     )
     if not result:
         return JSONResponse(status_code=400, content={"detail": "Failed to administer medication"})

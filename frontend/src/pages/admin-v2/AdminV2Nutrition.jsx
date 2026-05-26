@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientHeader, PatientSelectorModal } from './components';
+import { PatientHeader, PatientSelectorModal, IntakeModal, OutputModal, NutritionOverview } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -41,9 +41,14 @@ import {
   LunchIcon,
   DinnerIcon,
   SnackIcon,
-  TubeIcon
+  TubeIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CalendarIcon,
+  CheckIcon,
+  TargetIcon
 } from '../../components/Icons';
-import { localTimeToUTC, formatCronExpression, getCurrentLocalDateTime, localDateTimeToUTC, getLocalDateTimeString } from '../../utils/timezone';
+import { localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime, formatCronExpression, getCurrentLocalDateTime, localDateTimeToUTC, getLocalDateTimeString } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2Nutrition = () => {
@@ -63,10 +68,11 @@ const AdminV2Nutrition = () => {
   // Derive active tab from URL path
   const getActiveTabFromPath = () => {
     const path = location.pathname;
+    if (path.includes('/nutrition/intake')) return 'intake';
     if (path.includes('/nutrition/output')) return 'output';
     if (path.includes('/nutrition/schedules')) return 'schedules';
     if (path.includes('/nutrition/goals')) return 'goals';
-    return 'intake'; // default
+    return 'overview'; // default — /care/nutrition lands here
   };
   
   const activeTab = getActiveTabFromPath();
@@ -81,6 +87,12 @@ const AdminV2Nutrition = () => {
   const [schedules, setSchedules] = useState([]);
   const [goals, setGoals] = useState([]);
   const [currentGoal, setCurrentGoal] = useState(null);
+
+  // Overview-tab state — single date the page is showing, plus that day's
+  // intake + output records pulled from the daily endpoints.
+  const [overviewDate, setOverviewDate] = useState(new Date());
+  const [dailyIntakes, setDailyIntakes] = useState([]);
+  const [dailyOutputs, setDailyOutputs] = useState([]);
   
   // Reference data
   const [outputTypes, setOutputTypes] = useState({});
@@ -96,42 +108,8 @@ const AdminV2Nutrition = () => {
   const [deletingItem, setDeletingItem] = useState(null);
   const [deleteType, setDeleteType] = useState(null);
   
-  // Form states
-  const [intakeForm, setIntakeForm] = useState({
-    item_name: '',
-    item_type: 'liquid',
-    amount: '',
-    amount_unit: 'ml',
-    calories: '',
-    protein_grams: '',
-    carbs_grams: '',
-    fat_grams: '',
-    sodium_mg: '',
-    meal_type: 'snack',
-    notes: '',
-    consumed_at: ''
-  });
-  
-  const [outputForm, setOutputForm] = useState({
-    output_type: 'urine',
-    consistency: '',
-    color: '',
-    amount: '',
-    amount_unit: 'ml',
-    clarity: '',
-    is_diaper: false,
-    diaper_wetness: '',
-    diaper_soiled: false,
-    is_catheter: false,
-    catheter_bag_emptied: false,
-    notes: '',
-    has_blood: false,
-    has_mucus: false,
-    pain_reported: false,
-    straining: false,
-    occurred_at: ''
-  });
-  
+  // Intake/output form state lives inside the shared modal components now.
+
   const [scheduleForm, setScheduleForm] = useState({
     schedule_type: 'meal',
     name: '',
@@ -205,12 +183,30 @@ const AdminV2Nutrition = () => {
     fetchScheduleTypes();
   }, []);
 
-  // Fetch data when patient is selected
+  // Fetch data when patient is selected. Overview also refetches on date change.
   useEffect(() => {
     if (selectedPatient) {
       fetchData();
     }
-  }, [selectedPatient, activeTab]);
+  }, [selectedPatient, activeTab, overviewDate]);
+
+  // The Overview page needs the current goal to compute % targets — but
+  // currentGoal is only loaded by the goals tab in fetchData. Load it once
+  // when a patient is selected so Overview always has it on first render.
+  useEffect(() => {
+    if (!selectedPatient) return;
+    (async () => {
+      try {
+        const res = await fetch(
+          `${config.apiUrl}/api/nutrition/goals/patient/${selectedPatient.id}/current`,
+          { credentials: 'include' }
+        );
+        if (res.ok) setCurrentGoal(await res.json());
+      } catch (err) {
+        console.error('Error fetching current goal:', err);
+      }
+    })();
+  }, [selectedPatient]);
 
   const fetchOutputTypes = async () => {
     try {
@@ -242,12 +238,42 @@ const AdminV2Nutrition = () => {
 
   const fetchData = async () => {
     if (!selectedPatient) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
-      if (activeTab === 'intake') {
+      if (activeTab === 'overview') {
+        const dateParam = formatDateForApi(overviewDate);
+        // Minutes the caller's local time is ahead of UTC — Schedule's
+        // /api/schedule/daily expects the same sign convention. JS's
+        // getTimezoneOffset() returns the opposite sign (UTC-minus-local),
+        // so we negate it.
+        const tzOffsetMinutes = -new Date().getTimezoneOffset();
+        const [intakeRes, outputRes] = await Promise.all([
+          fetch(
+            `${config.apiUrl}/api/patients/${selectedPatient.id}/nutrition-intake/daily?target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}`,
+            { credentials: 'include' }
+          ),
+          fetch(
+            `${config.apiUrl}/api/nutrition/outputs/patient/${selectedPatient.id}/daily?target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}`,
+            { credentials: 'include' }
+          ),
+        ]);
+        if (intakeRes.ok) {
+          const data = await intakeRes.json();
+          // /daily wraps records in { date, intake_records: [...] }
+          setDailyIntakes(data.intake_records || []);
+        } else {
+          setDailyIntakes([]);
+        }
+        if (outputRes.ok) {
+          // /outputs/.../daily returns a plain array
+          setDailyOutputs(await outputRes.json());
+        } else {
+          setDailyOutputs([]);
+        }
+      } else if (activeTab === 'intake') {
         const response = await fetch(
           `${config.apiUrl}/api/patients/${selectedPatient.id}/nutrition-intake`,
           { credentials: 'include' }
@@ -302,85 +328,8 @@ const AdminV2Nutrition = () => {
   // ========================
   
   const openIntakeModal = (intake = null) => {
-    if (intake) {
-      setEditingItem(intake);
-      setIntakeForm({
-        item_name: intake.item_name || '',
-        item_type: intake.item_type || 'liquid',
-        amount: intake.amount || '',
-        amount_unit: intake.amount_unit || 'ml',
-        calories: intake.calories || '',
-        protein_grams: intake.protein_grams || '',
-        carbs_grams: intake.carbs_grams || '',
-        fat_grams: intake.fat_grams || '',
-        sodium_mg: intake.sodium_mg || '',
-        meal_type: intake.meal_type || 'snack',
-        notes: intake.notes || '',
-        consumed_at: intake.consumed_at ? getLocalDateTimeString(new Date(intake.consumed_at)) : getCurrentLocalDateTime()
-      });
-    } else {
-      setEditingItem(null);
-      setIntakeForm({
-        item_name: '',
-        item_type: 'liquid',
-        amount: '',
-        amount_unit: 'ml',
-        calories: '',
-        protein_grams: '',
-        carbs_grams: '',
-        fat_grams: '',
-        sodium_mg: '',
-        meal_type: 'snack',
-        notes: '',
-        consumed_at: getCurrentLocalDateTime()
-      });
-    }
-    setFormError(null);
+    setEditingItem(intake);
     setShowIntakeModal(true);
-  };
-
-  const handleSaveIntake = async (e) => {
-    e.preventDefault();
-    if (!selectedPatient) return;
-    
-    setSaving(true);
-    setFormError(null);
-    
-    try {
-      const payload = {
-        ...intakeForm,
-        amount: parseFloat(intakeForm.amount) || 0,
-        calories: intakeForm.calories ? parseFloat(intakeForm.calories) : null,
-        protein_grams: intakeForm.protein_grams ? parseFloat(intakeForm.protein_grams) : null,
-        carbs_grams: intakeForm.carbs_grams ? parseFloat(intakeForm.carbs_grams) : null,
-        fat_grams: intakeForm.fat_grams ? parseFloat(intakeForm.fat_grams) : null,
-        sodium_mg: intakeForm.sodium_mg ? parseFloat(intakeForm.sodium_mg) : null,
-        consumed_at: localDateTimeToUTC(intakeForm.consumed_at)
-      };
-      
-      const url = editingItem
-        ? `${config.apiUrl}/api/nutrition-intake/${editingItem.id}`
-        : `${config.apiUrl}/api/nutrition-intake?patient_id=${selectedPatient.id}`;
-      
-      const response = await fetch(url, {
-        method: editingItem ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Failed to save intake');
-      }
-      
-      setShowIntakeModal(false);
-      fetchData();
-    } catch (err) {
-      setFormError(err.message);
-    } finally {
-      setSaving(false);
-    }
   };
 
   // ========================
@@ -388,91 +337,8 @@ const AdminV2Nutrition = () => {
   // ========================
   
   const openOutputModal = (output = null) => {
-    if (output) {
-      setEditingItem(output);
-      setOutputForm({
-        output_type: output.output_type || 'urine',
-        consistency: output.consistency || '',
-        color: output.color || '',
-        amount: output.amount || '',
-        amount_unit: output.amount_unit || 'ml',
-        clarity: output.clarity || '',
-        is_diaper: output.is_diaper || false,
-        diaper_wetness: output.diaper_wetness || '',
-        diaper_soiled: output.diaper_soiled || false,
-        is_catheter: output.is_catheter || false,
-        catheter_bag_emptied: output.catheter_bag_emptied || false,
-        notes: output.notes || '',
-        has_blood: output.has_blood || false,
-        has_mucus: output.has_mucus || false,
-        pain_reported: output.pain_reported || false,
-        straining: output.straining || false,
-        occurred_at: output.occurred_at ? getLocalDateTimeString(new Date(output.occurred_at)) : getCurrentLocalDateTime()
-      });
-    } else {
-      setEditingItem(null);
-      setOutputForm({
-        output_type: 'urine',
-        consistency: '',
-        color: '',
-        amount: '',
-        amount_unit: 'ml',
-        clarity: '',
-        is_diaper: false,
-        diaper_wetness: '',
-        diaper_soiled: false,
-        is_catheter: false,
-        catheter_bag_emptied: false,
-        notes: '',
-        has_blood: false,
-        has_mucus: false,
-        pain_reported: false,
-        straining: false,
-        occurred_at: getCurrentLocalDateTime()
-      });
-    }
-    setFormError(null);
+    setEditingItem(output);
     setShowOutputModal(true);
-  };
-
-  const handleSaveOutput = async (e) => {
-    e.preventDefault();
-    if (!selectedPatient) return;
-    
-    setSaving(true);
-    setFormError(null);
-    
-    try {
-      const payload = {
-        ...outputForm,
-        patient_id: selectedPatient.id,
-        amount: outputForm.amount ? parseFloat(outputForm.amount) : null,
-        occurred_at: localDateTimeToUTC(outputForm.occurred_at)
-      };
-      
-      const url = editingItem
-        ? `${config.apiUrl}/api/nutrition/outputs/${editingItem.id}`
-        : `${config.apiUrl}/api/nutrition/outputs`;
-      
-      const response = await fetch(url, {
-        method: editingItem ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Failed to save output');
-      }
-      
-      setShowOutputModal(false);
-      fetchData();
-    } catch (err) {
-      setFormError(err.message);
-    } finally {
-      setSaving(false);
-    }
   };
 
   // ========================
@@ -526,31 +392,53 @@ const AdminV2Nutrition = () => {
     if (!cronExpr) return;
     const parts = cronExpr.split(' ');
     if (parts.length < 5) return;
-    
+
     const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
-    setScheduleTime(`${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`);
-    
+
     if (dayOfMonth !== '*') {
+      // Cron times are stored in UTC; convert hour/minute to local for display.
+      const utc = new Date();
+      utc.setUTCHours(parseInt(hour, 10), parseInt(minute, 10), 0, 0);
+      setScheduleTime(
+        `${String(utc.getHours()).padStart(2, '0')}:${String(utc.getMinutes()).padStart(2, '0')}`
+      );
       setScheduleMode('monthly');
       setSelectedDayOfMonth(parseInt(dayOfMonth) || 1);
     } else if (dayOfWeek !== '*') {
+      // Shift UTC days back to local days so the day checkboxes match what the
+      // user originally picked. utcCronToLocalDaysAndTime also returns the
+      // local HH:MM derived from the UTC hour/minute.
+      const utcDayList = dayOfWeek.split(',').map(d => parseInt(d, 10));
+      const { time, days } = utcCronToLocalDaysAndTime(
+        parseInt(hour, 10),
+        parseInt(minute, 10),
+        utcDayList,
+      );
+      setScheduleTime(time);
       setScheduleMode('weekly');
-      setSelectedDays(dayOfWeek.split(',').map(d => parseInt(d)));
+      setSelectedDays(days);
     } else {
+      const utc = new Date();
+      utc.setUTCHours(parseInt(hour, 10), parseInt(minute, 10), 0, 0);
+      setScheduleTime(
+        `${String(utc.getHours()).padStart(2, '0')}:${String(utc.getMinutes()).padStart(2, '0')}`
+      );
       setScheduleMode('daily');
     }
   };
 
   const buildCronExpression = () => {
-    // Convert local time to UTC for cron expression (DB stores in UTC)
-    const utc = localTimeToUTC(scheduleTime);
-    
     if (scheduleMode === 'daily') {
+      const utc = localTimeToUTC(scheduleTime);
       return `${utc.minute} ${utc.hour} * * *`;
     } else if (scheduleMode === 'weekly') {
       if (selectedDays.length === 0) return null;
-      return `${utc.minute} ${utc.hour} * * ${selectedDays.sort().join(',')}`;
+      // Convert local time AND local days-of-week to UTC together — the cron's
+      // day list must shift when the time conversion crosses midnight.
+      const utc = localTimeAndDaysToUTC(scheduleTime, selectedDays);
+      return `${utc.minute} ${utc.hour} * * ${utc.days.join(',')}`;
     } else if (scheduleMode === 'monthly') {
+      const utc = localTimeToUTC(scheduleTime);
       return `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
     }
     return null;
@@ -782,6 +670,64 @@ const AdminV2Nutrition = () => {
     return date.toLocaleDateString();
   };
 
+  // YYYY-MM-DD in local time. toISOString() would shift by a day in any
+  // timezone where the UTC offset has crossed midnight; mirror the Schedule
+  // page's local-date approach so the backend filters the user's actual day.
+  const formatDateForApi = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const formatDisplayDate = (date) =>
+    date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+  const isToday = (date) => date.toDateString() === new Date().toDateString();
+
+  const goToPreviousDay = () => {
+    const d = new Date(overviewDate);
+    d.setDate(d.getDate() - 1);
+    setOverviewDate(d);
+  };
+  const goToNextDay = () => {
+    const d = new Date(overviewDate);
+    d.setDate(d.getDate() + 1);
+    setOverviewDate(d);
+  };
+  const goToToday = () => setOverviewDate(new Date());
+
+  // Time only — used in the combined log table.
+  const formatTimeShort = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
+  // Convert any intake amount to ml so we can sum total fluids consistently.
+  // Counts liquids and hydration-schedule completions (which store
+  // item_type='hydration' from the schedule_type). Solid foods are excluded.
+  const FLUID_ITEM_TYPES = new Set(['liquid', 'hydration']);
+  const intakeToMl = (intake) => {
+    if (!FLUID_ITEM_TYPES.has(intake.item_type) || !intake.amount) return 0;
+    const unit = (intake.amount_unit || 'ml').toLowerCase();
+    const amount = parseFloat(intake.amount) || 0;
+    if (unit === 'oz' || unit === 'ounces') return amount * 29.5735;
+    if (unit === 'cup' || unit === 'cups') return amount * 236.588;
+    if (unit === 'l' || unit === 'liter' || unit === 'liters') return amount * 1000;
+    return amount; // assume ml
+  };
+
+  const outputToMl = (output) => {
+    if (!output.amount) return 0;
+    const unit = (output.amount_unit || 'ml').toLowerCase();
+    const amount = parseFloat(output.amount) || 0;
+    if (unit === 'oz' || unit === 'ounces') return amount * 29.5735;
+    if (unit === 'cup' || unit === 'cups') return amount * 236.588;
+    if (unit === 'l' || unit === 'liter' || unit === 'liters') return amount * 1000;
+    return amount;
+  };
+
   // Calculate daily occurrences from cron expression
   const getDailyOccurrences = (cronExpr) => {
     if (!cronExpr) return 0;
@@ -897,7 +843,40 @@ const AdminV2Nutrition = () => {
           <>
             {error && <div className="admin-v2-error">{error}</div>}
 
+            {/* OVERVIEW TAB — rendered outside .admin-v2-content so the
+                sticky date nav binds to the outer Layout scroll container. */}
+            {activeTab === 'overview' && (
+              <NutritionOverview
+                selectedDate={overviewDate}
+                onPrevDay={goToPreviousDay}
+                onNextDay={goToNextDay}
+                onGoToToday={goToToday}
+                onPickDate={(d) => setOverviewDate(d)}
+                formatDateForApi={formatDateForApi}
+                formatDisplayDate={formatDisplayDate}
+                isToday={isToday}
+                intakes={dailyIntakes}
+                outputs={dailyOutputs}
+                currentGoal={currentGoal}
+                loading={loading}
+                onLogIntake={() => openIntakeModal()}
+                onLogOutput={() => openOutputModal()}
+                onEditIntake={openIntakeModal}
+                onEditOutput={openOutputModal}
+                onDeleteIntake={(item) => openDeleteModal(item, 'intake')}
+                onDeleteOutput={(item) => openDeleteModal(item, 'output')}
+                canCreate={hasPermission('nutrition.create')}
+                canUpdate={hasPermission('nutrition.update')}
+                canDelete={hasPermission('nutrition.delete')}
+                outputTypes={outputTypes}
+                intakeToMl={intakeToMl}
+                outputToMl={outputToMl}
+                formatTimeShort={formatTimeShort}
+              />
+            )}
+
             {/* Content based on active tab */}
+            {activeTab !== 'overview' && (
             <div className="admin-v2-content">
               {/* INTAKE TAB */}
               {activeTab === 'intake' && (
@@ -1493,6 +1472,7 @@ const AdminV2Nutrition = () => {
                 </div>
               )}
             </div>
+            )}
           </>
         )}
       </div>
@@ -1507,479 +1487,22 @@ const AdminV2Nutrition = () => {
         />
       )}
 
-      {/* Intake Modal */}
-      {showIntakeModal && (
-        <div className="admin-v2-modal-overlay" onClick={() => setShowIntakeModal(false)}>
-          <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
-            <div className="admin-v2-modal-header">
-              <h3>{editingItem ? 'Edit Intake' : 'Log Intake'}</h3>
-              <button className="admin-v2-modal-close" onClick={() => setShowIntakeModal(false)}>
-                <XIcon size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSaveIntake}>
-              <div className="admin-v2-modal-body">
-                {formError && <div className="admin-v2-form-error">{formError}</div>}
-                
-                <div className="admin-v2-form-group" style={{ marginBottom: '1rem' }}>
-                  <label><ClockIcon size={16} /> Date & Time *</label>
-                  <input
-                    type="datetime-local"
-                    value={intakeForm.consumed_at}
-                    onChange={e => setIntakeForm({...intakeForm, consumed_at: e.target.value})}
-                    required
-                  />
-                </div>
+      <IntakeModal
+        open={showIntakeModal}
+        onClose={() => { setShowIntakeModal(false); setEditingItem(null); }}
+        onSaved={fetchData}
+        patient={selectedPatient}
+        editing={editingItem}
+      />
 
-                {/* Intake Type Selection */}
-                <div className="admin-v2-output-type-section">
-                  <label className="admin-v2-output-section-label">Intake Type *</label>
-                  <div className="admin-v2-output-type-grid">
-                    {['liquid', 'food', 'supplement', 'tube_feed'].map(type => (
-                      <button
-                        key={type}
-                        type="button"
-                        className={`admin-v2-output-type-btn ${intakeForm.item_type === type ? 'active' : ''}`}
-                        onClick={() => setIntakeForm({...intakeForm, item_type: type})}
-                      >
-                        {type === 'liquid' && <LiquidIcon size={20} />}
-                        {type === 'food' && <FoodIcon size={20} />}
-                        {type === 'supplement' && <SupplementIcon size={20} />}
-                        {type === 'tube_feed' && <TubeIcon size={20} />}
-                        <span>{type === 'tube_feed' ? 'Tube Feed' : type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+      <OutputModal
+        open={showOutputModal}
+        onClose={() => { setShowOutputModal(false); setEditingItem(null); }}
+        onSaved={fetchData}
+        patient={selectedPatient}
+        editing={editingItem}
+      />
 
-                {/* Meal Type Selection */}
-                <div className="admin-v2-output-type-section">
-                  <label className="admin-v2-output-section-label">Meal Type</label>
-                  <div className="admin-v2-output-type-grid">
-                    {['breakfast', 'lunch', 'dinner', 'snack', 'supplement'].map(type => (
-                      <button
-                        key={type}
-                        type="button"
-                        className={`admin-v2-output-type-btn ${intakeForm.meal_type === type ? 'active' : ''}`}
-                        onClick={() => setIntakeForm({...intakeForm, meal_type: type})}
-                      >
-                        {type === 'breakfast' && <BreakfastIcon size={20} />}
-                        {type === 'lunch' && <LunchIcon size={20} />}
-                        {type === 'dinner' && <DinnerIcon size={20} />}
-                        {type === 'snack' && <SnackIcon size={20} />}
-                        {type === 'supplement' && <SupplementIcon size={20} />}
-                        <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Item Details Card */}
-                <div className="admin-v2-output-details-card">
-                  <h4 className="admin-v2-output-card-title">Item Details</h4>
-                  <div className="admin-v2-form-group">
-                    <label>Item Name *</label>
-                    <input
-                      type="text"
-                      value={intakeForm.item_name}
-                      onChange={e => setIntakeForm({...intakeForm, item_name: e.target.value})}
-                      placeholder="e.g., Water, Peptamen, Apple"
-                      required
-                    />
-                  </div>
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Amount *</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={intakeForm.amount}
-                        onChange={e => setIntakeForm({...intakeForm, amount: e.target.value})}
-                        required
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Unit</label>
-                      <select
-                        value={intakeForm.amount_unit}
-                        onChange={e => setIntakeForm({...intakeForm, amount_unit: e.target.value})}
-                      >
-                        <option value="ml">ml</option>
-                        <option value="oz">oz</option>
-                        <option value="cups">cups</option>
-                        <option value="grams">grams</option>
-                        <option value="servings">servings</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Nutrition Details Card */}
-                <div className="admin-v2-output-details-card">
-                  <h4 className="admin-v2-output-card-title"><FlameIcon size={16} /> Nutrition (Optional)</h4>
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Calories</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={intakeForm.calories}
-                        onChange={e => setIntakeForm({...intakeForm, calories: e.target.value})}
-                        placeholder="kcal"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Protein (g)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={intakeForm.protein_grams}
-                        onChange={e => setIntakeForm({...intakeForm, protein_grams: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Carbs (g)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={intakeForm.carbs_grams}
-                        onChange={e => setIntakeForm({...intakeForm, carbs_grams: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Fat (g)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={intakeForm.fat_grams}
-                        onChange={e => setIntakeForm({...intakeForm, fat_grams: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Sodium (mg)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={intakeForm.sodium_mg}
-                        onChange={e => setIntakeForm({...intakeForm, sodium_mg: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="admin-v2-form-group">
-                  <label><NotesIcon size={16} /> Notes</label>
-                  <textarea
-                    value={intakeForm.notes}
-                    onChange={e => setIntakeForm({...intakeForm, notes: e.target.value})}
-                    rows={2}
-                    placeholder="Additional notes..."
-                  />
-                </div>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button type="button" className="admin-v2-btn admin-v2-btn-secondary" onClick={() => setShowIntakeModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-                  {saving ? 'Saving...' : (editingItem ? 'Update' : 'Save')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Output Modal */}
-      {showOutputModal && (
-        <div className="admin-v2-modal-overlay" onClick={() => setShowOutputModal(false)}>
-          <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
-            <div className="admin-v2-modal-header">
-              <h3>{editingItem ? 'Edit Output' : 'Log Output'}</h3>
-              <button className="admin-v2-modal-close" onClick={() => setShowOutputModal(false)}>
-                <XIcon size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSaveOutput}>
-              <div className="admin-v2-modal-body">
-                {formError && <div className="admin-v2-form-error">{formError}</div>}
-                
-                <div className="admin-v2-form-group" style={{ marginBottom: '1rem' }}>
-                  <label>Date & Time *</label>
-                  <input
-                    type="datetime-local"
-                    value={outputForm.occurred_at}
-                    onChange={e => setOutputForm({...outputForm, occurred_at: e.target.value})}
-                    required
-                  />
-                </div>
-                
-                {/* Output Type Selection */}
-                <div className="admin-v2-output-type-section">
-                  <label className="admin-v2-output-section-label">Output Type *</label>
-                  <div className="admin-v2-output-type-grid">
-                    {(outputTypes.output_types || ['urine', 'bowel', 'vomit', 'other']).map(type => (
-                      <button
-                        key={type}
-                        type="button"
-                        className={`admin-v2-output-type-btn ${outputForm.output_type === type ? 'active' : ''}`}
-                        onClick={() => setOutputForm({...outputForm, output_type: type})}
-                      >
-                        {type === 'urine' && <UrineIcon size={20} />}
-                        {type === 'bowel' && <BowelIcon size={20} />}
-                        {type === 'vomit' && <VomitIcon size={20} />}
-                        {type === 'other' && <NotesIcon size={20} />}
-                        <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Method Selection */}
-                <div className="admin-v2-output-method-section">
-                  <div className="admin-v2-output-method-options">
-                    <label className={`admin-v2-output-method-option ${outputForm.is_diaper ? 'active' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={outputForm.is_diaper}
-                        onChange={e => setOutputForm({...outputForm, is_diaper: e.target.checked})}
-                      />
-                      <span className="admin-v2-output-method-icon"><DiaperIcon size={18} /></span>
-                      <span>Diaper</span>
-                    </label>
-                    <label className={`admin-v2-output-method-option ${outputForm.is_catheter ? 'active' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={outputForm.is_catheter}
-                        onChange={e => setOutputForm({...outputForm, is_catheter: e.target.checked})}
-                      />
-                      <span className="admin-v2-output-method-icon"><CatheterIcon size={18} /></span>
-                      <span>Catheter</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Bowel Movement Details */}
-                {outputForm.output_type === 'bowel' && (
-                  <div className="admin-v2-output-details-card">
-                    <h4 className="admin-v2-output-card-title">Bowel Movement Details</h4>
-                    
-                    <div className="admin-v2-form-group">
-                      <label>Amount</label>
-                      <div className="admin-v2-output-amount-grid">
-                        {['smear', 'small', 'medium', 'large'].map(size => (
-                          <button
-                            key={size}
-                            type="button"
-                            className={`admin-v2-output-amount-btn ${outputForm.amount_unit === size ? 'active' : ''}`}
-                            onClick={() => setOutputForm({...outputForm, amount_unit: size, amount: null})}
-                          >
-                            <span className="admin-v2-output-amount-icon">
-                              {size === 'smear' && <SizeSmearIcon size={20} />}
-                              {size === 'small' && <SizeSmallIcon size={20} />}
-                              {size === 'medium' && <SizeMediumIcon size={20} />}
-                              {size === 'large' && <SizeLargeIcon size={20} />}
-                            </span>
-                            <span>{size.charAt(0).toUpperCase() + size.slice(1)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="admin-v2-form-row">
-                      <div className="admin-v2-form-group">
-                        <label>Consistency</label>
-                        <select
-                          value={outputForm.consistency}
-                          onChange={e => setOutputForm({...outputForm, consistency: e.target.value})}
-                        >
-                          <option value="">Select...</option>
-                          {(outputTypes.consistency_types || []).map(type => (
-                            <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label>Color</label>
-                        <select
-                          value={outputForm.color}
-                          onChange={e => setOutputForm({...outputForm, color: e.target.value})}
-                        >
-                          <option value="">Select...</option>
-                          {(outputTypes.color_types || []).map(type => (
-                            <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Urine Details */}
-                {outputForm.output_type === 'urine' && (
-                  <div className="admin-v2-output-details-card">
-                    <h4 className="admin-v2-output-card-title">Urine Details</h4>
-                    <div className="admin-v2-form-row">
-                      <div className="admin-v2-form-group">
-                        <label>Clarity</label>
-                        <select
-                          value={outputForm.clarity}
-                          onChange={e => setOutputForm({...outputForm, clarity: e.target.value})}
-                        >
-                          <option value="">Select...</option>
-                          {(outputTypes.clarity_types || []).map(type => (
-                            <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label>Amount (ml)</label>
-                        <input
-                          type="number"
-                          step="1"
-                          value={outputForm.amount}
-                          onChange={e => setOutputForm({...outputForm, amount: e.target.value})}
-                          placeholder="Enter ml"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Diaper Details */}
-                {outputForm.is_diaper && (
-                  <div className="admin-v2-output-details-card">
-                    <h4 className="admin-v2-output-card-title">Diaper Details</h4>
-                    <div className="admin-v2-form-row">
-                      <div className="admin-v2-form-group">
-                        <label>Wetness Level</label>
-                        <div className="admin-v2-output-wetness-grid">
-                          {(outputTypes.diaper_wetness_types || ['dry', 'wet', 'soaked']).map(type => (
-                            <button
-                              key={type}
-                              type="button"
-                              className={`admin-v2-output-wetness-btn ${outputForm.diaper_wetness === type ? 'active' : ''}`}
-                              onClick={() => setOutputForm({...outputForm, diaper_wetness: type})}
-                            >
-                              {type === 'dry' && <WetnessDryIcon size={18} />}
-                              {type === 'wet' && <WetnessWetIcon size={18} />}
-                              {type === 'soaked' && <WetnessSoakedIcon size={18} />}
-                              <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label className={`admin-v2-output-toggle-option ${outputForm.diaper_soiled ? 'active' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={outputForm.diaper_soiled}
-                            onChange={e => setOutputForm({...outputForm, diaper_soiled: e.target.checked})}
-                          />
-                          <span>Soiled (Bowel Movement)</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Catheter Details */}
-                {outputForm.is_catheter && (
-                  <div className="admin-v2-output-details-card">
-                    <h4 className="admin-v2-output-card-title">Catheter Details</h4>
-                    <div className="admin-v2-form-row">
-                      <div className="admin-v2-form-group">
-                        <label className={`admin-v2-output-toggle-option ${outputForm.catheter_bag_emptied ? 'active' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={outputForm.catheter_bag_emptied}
-                            onChange={e => setOutputForm({...outputForm, catheter_bag_emptied: e.target.checked})}
-                          />
-                          <span>Bag Emptied</span>
-                        </label>
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label>Amount (ml)</label>
-                        <input
-                          type="number"
-                          step="1"
-                          value={outputForm.amount}
-                          onChange={e => setOutputForm({...outputForm, amount: e.target.value})}
-                          placeholder="Enter ml"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Concerns Section */}
-                <div className="admin-v2-output-details-card admin-v2-output-concerns-card">
-                  <h4 className="admin-v2-output-card-title">Concerns</h4>
-                  <div className="admin-v2-output-concerns-grid">
-                    <label className={`admin-v2-output-concern-option ${outputForm.has_blood ? 'active warning' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={outputForm.has_blood}
-                        onChange={e => setOutputForm({...outputForm, has_blood: e.target.checked})}
-                      />
-                      <span className="admin-v2-concern-icon"><BloodIcon size={20} /></span>
-                      <span>Blood</span>
-                    </label>
-                    <label className={`admin-v2-output-concern-option ${outputForm.has_mucus ? 'active warning' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={outputForm.has_mucus}
-                        onChange={e => setOutputForm({...outputForm, has_mucus: e.target.checked})}
-                      />
-                      <span className="admin-v2-concern-icon"><MucusIcon size={20} /></span>
-                      <span>Mucus</span>
-                    </label>
-                    <label className={`admin-v2-output-concern-option ${outputForm.pain_reported ? 'active warning' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={outputForm.pain_reported}
-                        onChange={e => setOutputForm({...outputForm, pain_reported: e.target.checked})}
-                      />
-                      <span className="admin-v2-concern-icon"><PainIcon size={20} /></span>
-                      <span>Pain</span>
-                    </label>
-                    <label className={`admin-v2-output-concern-option ${outputForm.straining ? 'active warning' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={outputForm.straining}
-                        onChange={e => setOutputForm({...outputForm, straining: e.target.checked})}
-                      />
-                      <span className="admin-v2-concern-icon"><StrainingIcon size={20} /></span>
-                      <span>Straining</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Notes */}
-                <div className="admin-v2-output-notes-section">
-                  <label>Notes</label>
-                  <textarea
-                    value={outputForm.notes}
-                    onChange={e => setOutputForm({...outputForm, notes: e.target.value})}
-                    rows={3}
-                    placeholder="Any additional observations..."
-                  />
-                </div>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button type="button" className="admin-v2-btn admin-v2-btn-secondary" onClick={() => setShowOutputModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-                  {saving ? 'Saving...' : (editingItem ? 'Update' : 'Save')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Schedule Modal */}
       {showScheduleModal && (

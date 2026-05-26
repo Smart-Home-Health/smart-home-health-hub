@@ -14,18 +14,22 @@ const DynamicVitalsCard = ({ vitalType, data = [], title }) => {
   const formatChartData = (data, vitalType) => {
     if (!data || data.length === 0) return [];
     
+    // Data arrives newest-first from the API. Take the newest 5 and reverse
+    // so the chart renders oldest → newest left-to-right.
+    const recent = data.slice(0, 5).slice().reverse();
+
     // For bathroom vitals, we want to keep the numeric values for charting
     // but we may want to group by vital_group for different colors
     if (vitalType === 'bathroom') {
-      return data.slice(-5).map((item, index) => ({
+      return recent.map((item, index) => ({
         index,
         value: item.value, // Keep numeric value for chart
         originalItem: item,
         group: item.vital_group || 'unknown' // Add group for potential color coding
       }));
     }
-    
-    return data.slice(-5).map((item, index) => {
+
+    return recent.map((item, index) => {
       let value = item.value;
       
       // Handle different data structures
@@ -256,8 +260,9 @@ const DynamicVitalsCard = ({ vitalType, data = [], title }) => {
   const displayTitle = title || vitalType.charAt(0).toUpperCase() + vitalType.slice(1);
   
   // Get the primary group for bathroom vitals to determine title color
-  const primaryGroup = vitalType === 'bathroom' && data && data.length > 0 ? 
-    data[data.length - 1]?.vital_group : null;
+  // (data is newest-first, so the most recent entry is at index 0)
+  const primaryGroup = vitalType === 'bathroom' && data && data.length > 0 ?
+    data[0]?.vital_group : null;
 
   return (
     <div style={{
@@ -425,7 +430,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title }) => {
               </thead>
               <tbody>
                 {data && data.length > 0 ? (
-                  data.slice(-5).map((item, index) => (
+                  data.slice(0, 5).map((item, index) => (
                     <tr key={index}>
                       <td style={{ 
                         padding: '4px 8px', 

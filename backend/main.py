@@ -19,7 +19,7 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, readers
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, readers, backup
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
@@ -79,6 +79,7 @@ app.include_router(implants.router)
 app.include_router(dme_shipments.router)
 app.include_router(integrations.router)
 app.include_router(readers.router)
+app.include_router(backup.router)
 
 # Global event bus and modules
 event_bus = EventBus(maxsize=1000)
@@ -224,12 +225,12 @@ async def nutrition_scheduled_updater():
             # Publish scheduled nutrition values
             db = next(get_db())
             try:
-                from crud.patients import get_active_patient
+                from crud.patients import get_background_patient_id
                 from crud.nutrition import _publish_nutrition_scheduled_mqtt
-                
-                active_patient = get_active_patient(db)
-                if active_patient:
-                    _publish_nutrition_scheduled_mqtt(db, active_patient.id)
+
+                background_pid = get_background_patient_id(db)
+                if background_pid is not None:
+                    _publish_nutrition_scheduled_mqtt(db, background_pid)
                     logger.info("[nutrition_updater] Published hourly nutrition scheduled update")
             finally:
                 db.close()

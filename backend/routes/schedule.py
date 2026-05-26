@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Body
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
@@ -12,6 +13,7 @@ from db import get_db
 from utils.datetime_utils import utc_now
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition
+from utils.early_administration import guard_early_administration
 from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
@@ -26,6 +28,28 @@ from croniter import croniter
 logger = logging.getLogger("app")
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
+
+
+TIMING_FLAG_THRESHOLD_MINUTES = 15
+
+
+def _compute_timing_flags(scheduled_dt: Optional[datetime], administered_at: Optional[datetime]):
+    """
+    Return (administered_early, administered_late) by comparing the actual
+    administered time to the scheduled time. The 15-minute threshold matches
+    `crud.medications.administer_medication` so flags are consistent across
+    all log paths.
+    """
+    if scheduled_dt is None or administered_at is None:
+        return False, False
+    sched = scheduled_dt if scheduled_dt.tzinfo else scheduled_dt.replace(tzinfo=timezone.utc)
+    given = administered_at if administered_at.tzinfo else administered_at.replace(tzinfo=timezone.utc)
+    diff_minutes = (given - sched).total_seconds() / 60
+    if diff_minutes < -TIMING_FLAG_THRESHOLD_MINUTES:
+        return True, False
+    if diff_minutes > TIMING_FLAG_THRESHOLD_MINUTES:
+        return False, True
+    return False, False
 
 
 def parse_scheduled_time(scheduled_time_str: str) -> datetime:
@@ -62,6 +86,10 @@ def parse_scheduled_time(scheduled_time_str: str) -> datetime:
 async def get_daily_schedule(
     target_date: str = Query(None, description="Date in YYYY-MM-DD format, defaults to today"),
     patient_id: int = Query(..., description="Patient ID"),
+    tz_offset_minutes: Optional[int] = Query(
+        None,
+        description="Minutes the caller's local time is ahead of UTC. When provided, the day boundary is the caller's local midnight rather than UTC midnight.",
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -75,11 +103,11 @@ async def get_daily_schedule(
             schedule_date = datetime.strptime(target_date, "%Y-%m-%d").date()
         else:
             schedule_date = date.today()
-        
+
         # Get all scheduled items (now includes completion status from joined logs)
-        medications = get_scheduled_medications(db, schedule_date, patient_id)
-        nutrition_items = get_scheduled_nutrition(db, schedule_date, patient_id)
-        care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id)
+        medications = get_scheduled_medications(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
+        nutrition_items = get_scheduled_nutrition(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
+        care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
         
         # Build response - completion status already included from get_scheduled_* functions
         result = {
@@ -104,7 +132,9 @@ async def get_daily_schedule(
                 "completed": med["completed"],
                 "completed_at": med["completed_at"],
                 "completed_by": med["completed_by"],
-                "type": "medication"
+                "is_prn": med.get("is_prn", False),
+                "log_id": med.get("log_id"),
+                "type": "medication",
             })
         
         for nutr in nutrition_items:
@@ -124,7 +154,11 @@ async def get_daily_schedule(
                 "completed": nutr["completed"],
                 "completed_at": nutr["completed_at"],
                 "completed_by": nutr["completed_by"],
-                "type": "nutrition"
+                "is_prn": nutr.get("is_prn", False),
+                "intake_type": nutr.get("intake_type", "intake"),
+                "output_type": nutr.get("output_type"),
+                "log_id": nutr.get("log_id"),
+                "type": "nutrition",
             })
         
         for task in care_tasks:
@@ -164,13 +198,27 @@ async def complete_medication(
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
-        
+
+        # Block out-of-window administrations (>1h early or >1h late) unless
+        # the caller explicitly confirmed. dose_amount == 0 means skipped —
+        # not an administration, so not gated.
+        if (data.dose_amount is None or data.dose_amount > 0):
+            early = guard_early_administration(
+                scheduled_dt,
+                early_override=data.early_override,
+                item_label="medication",
+                schedule_id=data.schedule_id,
+                completed_at=data.completed_at,
+            )
+            if early is not None:
+                return early
+
         # Parse completed_at time if provided, otherwise use now
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
         else:
             completed_at = utc_now()
-        
+
         logger.info(f"Completing medication: schedule_id={data.schedule_id}, scheduled_time={data.scheduled_time}, completed_at={completed_at}")
         
         # Get the schedule to find medication ID
@@ -190,7 +238,14 @@ async def complete_medication(
         if dose_amount > 0 and medication.quantity is not None:
             medication.quantity = max(0, medication.quantity - float(dose_amount))
         
-        # Create log entry
+        # Compute timing flags from actual completed_at vs scheduled time —
+        # skipped doses (dose_amount == 0) are explicitly "not an administration"
+        # so they don't carry early/late flags.
+        if dose_amount > 0:
+            early_flag, late_flag = _compute_timing_flags(scheduled_dt, completed_at)
+        else:
+            early_flag, late_flag = False, False
+
         log = MedicationLog(
             medication_id=medication.id,
             patient_id=data.patient_id,
@@ -199,8 +254,8 @@ async def complete_medication(
             dose_amount=dose_amount,
             is_scheduled=True,
             scheduled_time=scheduled_dt,
-            administered_early=False,
-            administered_late=False,
+            administered_early=early_flag,
+            administered_late=late_flag,
             notes=data.notes,
             created_at=utc_now()
         )
@@ -223,7 +278,17 @@ async def complete_nutrition(
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
-        
+
+        early = guard_early_administration(
+            scheduled_dt,
+            early_override=data.early_override,
+            item_label="nutrition item",
+            schedule_id=data.schedule_id,
+            completed_at=data.completed_at,
+        )
+        if early is not None:
+            return early
+
         # Parse completed_at time if provided, otherwise use now
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
@@ -251,13 +316,13 @@ async def complete_nutrition(
             calories=schedule.default_calories,
             consumed_at=completed_at,
             scheduled_time=scheduled_dt,
-            notes=data.notes or f"Completed from schedule '{schedule.name}' at {scheduled_dt.strftime('%H:%M')}",
+            notes=data.notes,
             created_at=utc_now(),
             updated_at=utc_now()
         )
         db.add(intake)
         db.commit()
-        
+
         return {"success": True, "intake_id": intake.id}
     except Exception as e:
         logger.error(f"Error completing nutrition: {e}")
@@ -274,7 +339,17 @@ async def complete_care_task(
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
-        
+
+        early = guard_early_administration(
+            scheduled_dt,
+            early_override=data.early_override,
+            item_label="care task",
+            schedule_id=data.schedule_id,
+            completed_at=data.completed_at,
+        )
+        if early is not None:
+            return early
+
         # Parse completed_at time if provided, otherwise use now
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
@@ -293,6 +368,7 @@ async def complete_care_task(
             schedule_id=data.schedule_id,
             scheduled_time=scheduled_dt,
             completed_at=completed_at,
+            is_scheduled=True,
             status="completed",
             notes=data.notes,
             performed_by=data.user_id,
@@ -316,13 +392,77 @@ async def complete_bulk(
     db: Session = Depends(get_db)
 ):
     """Complete multiple schedule items at once (e.g., all items in an hour)"""
+    # Pre-flight: refuse the whole bulk if any item is outside the administration
+    # window (>1h early or >1h late) and was not individually overridden. Frontend
+    # can re-submit with early_override=true on the offending items after the user
+    # confirms.
+    from utils.early_administration import (
+        check_administration_window,
+        EARLY_ADMINISTRATION_THRESHOLD_MINUTES,
+        LATE_ADMINISTRATION_THRESHOLD_MINUTES,
+    )
+    off_window_items = []
+    sections = [
+        ("medication", medications),
+        ("nutrition item", nutrition),
+        ("care task", care_tasks),
+    ]
+    for label, items in sections:
+        for item in items:
+            # Skip doses are not gated (dose_amount == 0 == explicit skip)
+            if label == "medication" and item.dose_amount is not None and item.dose_amount == 0:
+                continue
+            if item.early_override:
+                continue
+            status, minutes_offset, parsed = check_administration_window(
+                item.scheduled_time,
+                completed_at=item.completed_at,
+            )
+            if status in ("early", "late"):
+                off_window_items.append({
+                    "type": label,
+                    "schedule_id": item.schedule_id,
+                    "scheduled_time": parsed.isoformat() if parsed else None,
+                    "status": status,
+                    "minutes_early": minutes_offset if status == "early" else 0,
+                    "minutes_late": -minutes_offset if status == "late" else 0,
+                })
+    if off_window_items:
+        has_early = any(i["status"] == "early" for i in off_window_items)
+        has_late = any(i["status"] == "late" for i in off_window_items)
+        if has_early and not has_late:
+            error_code = "early_administration"
+            window_msg = (
+                f"more than {EARLY_ADMINISTRATION_THRESHOLD_MINUTES} minutes from now"
+            )
+        elif has_late and not has_early:
+            error_code = "late_administration"
+            window_msg = (
+                f"more than {LATE_ADMINISTRATION_THRESHOLD_MINUTES} minutes past their scheduled time"
+            )
+        else:
+            error_code = "off_window_administration"
+            window_msg = "outside the administration window"
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": (
+                    f"{len(off_window_items)} item(s) are {window_msg}. "
+                    "Re-submit with early_override=true on those items to confirm."
+                ),
+                "error": error_code,
+                "threshold_minutes": EARLY_ADMINISTRATION_THRESHOLD_MINUTES,
+                "early_items": off_window_items,
+            },
+        )
+
     results = {
         "medications": [],
         "nutrition": [],
         "care_tasks": [],
         "success": True
     }
-    
+
     try:
         # Process medications
         for item in medications:
@@ -338,6 +478,10 @@ async def complete_bulk(
                         if dose_amount > 0 and medication.quantity is not None:
                             medication.quantity = max(0, medication.quantity - float(dose_amount))
                         
+                        if dose_amount > 0:
+                            early_flag, late_flag = _compute_timing_flags(scheduled_dt, completed_at)
+                        else:
+                            early_flag, late_flag = False, False
                         log = MedicationLog(
                             medication_id=medication.id,
                             patient_id=item.patient_id,
@@ -346,6 +490,8 @@ async def complete_bulk(
                             dose_amount=dose_amount,
                             is_scheduled=True,
                             scheduled_time=scheduled_dt,
+                            administered_early=early_flag,
+                            administered_late=late_flag,
                             notes=item.notes,
                             created_at=utc_now()
                         )
@@ -376,7 +522,7 @@ async def complete_bulk(
                         calories=schedule.default_calories,
                         consumed_at=completed_at,
                         scheduled_time=scheduled_dt,
-                        notes=item.notes or f"Completed from schedule '{schedule.name}' at {scheduled_dt.strftime('%H:%M')}",
+                        notes=item.notes,
                         created_at=utc_now(),
                         updated_at=utc_now()
                     )
@@ -399,9 +545,11 @@ async def complete_bulk(
                         schedule_id=item.schedule_id,
                         scheduled_time=scheduled_dt,
                         completed_at=completed_at,
+                        is_scheduled=True,
                         status="completed",
                         notes=item.notes,
-                        completed_by=item.user_id
+                        performed_by=item.user_id,
+                        created_at=utc_now()
                     )
                     db.add(log)
                     results["care_tasks"].append({"schedule_id": item.schedule_id, "success": True})

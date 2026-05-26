@@ -1,41 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
-import MedicationHistory from './medication/MedicationHistory';
-import MedicationScheduleView, { medicationStatusUtils } from './medication/MedicationScheduleView';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
+import {
+  checkAdministrationWindow,
+  formatDurationMinutes,
+  getCurrentLocalDateTime,
+  localDateTimeToUTC,
+} from '../utils/timezone';
 
 const MedicationModal = ({ onClose }) => {
   const { selectedPatient } = useAdminPatient();
   const [tab, setTab] = useState('scheduled');
   const [activeMedications, setActiveMedications] = useState([]);
-  const [inactiveMedications, setInactiveMedications] = useState([]);
   const [scheduledMedications, setScheduledMedications] = useState({ scheduled_medications: [] });
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingMed, setEditingMed] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [showScheduleFor, setShowScheduleFor] = useState(null); // med id or null
-  const [showHistory, setShowHistory] = useState(false); // show history view
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-
-  // Remove endDate from formData
-  const [formData, setFormData] = useState({
-    name: '',
-    concentration: '',
-    quantity: '',
-    quantityUnit: 'tablets',
-    instructions: '',
-    startDate: '',
-    asNeeded: false,
-    notes: '',
-    isPatientSpecific: false,
-    prescriberId: '',
-    pharmacyId: ''
-  });
-
-  // Provider and pharmacy state
-  const [providers, setProviders] = useState([]);
-  const [pharmacies, setPharmacies] = useState([]);
 
   // Confirmation modal state
   const [confirmModal, setConfirmModal] = useState({ open: false, item: null });
@@ -44,14 +24,20 @@ const MedicationModal = ({ onClose }) => {
   const [skipModal, setSkipModal] = useState({ open: false, item: null });
 
   // Mark All modal state
-  const [markAllModal, setMarkAllModal] = useState({ 
-    open: false, 
-    timeGroup: null, 
-    medications: [], 
+  const [markAllModal, setMarkAllModal] = useState({
+    open: false,
+    timeGroup: null,
+    medications: [],
     selectedMeds: new Set(),
     loading: false,
     completedMeds: new Set()
   });
+
+  // PRN modal — pick an as-needed med, then enter dose/time
+  const [prnModal, setPrnModal] = useState({ open: false, selectedMed: null });
+  const [prnForm, setPrnForm] = useState({ dose_amount: '', dose_unit: '', given_at: '', notes: '' });
+  const [prnSaving, setPrnSaving] = useState(false);
+  const [prnError, setPrnError] = useState(null);
 
   // Status filter state for scheduled medications
   const [statusFilters, setStatusFilters] = useState({
@@ -81,65 +67,21 @@ const MedicationModal = ({ onClose }) => {
   useEffect(() => {
     if (!selectedPatient) return;
     fetchMedications();
-    fetchPharmacies();
-    fetchProviders();
     if (tab === 'scheduled') {
       fetchScheduledMedications();
     }
   }, [tab, selectedPatient?.id]);
 
-  const fetchProviders = async () => {
-    if (!selectedPatient) return;
-    try {
-      const response = await fetch(
-        `${config.apiUrl}/api/providers/patient/${selectedPatient.id}?active_only=true`,
-        { credentials: 'include' }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setProviders(data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching providers:', error);
-      setProviders([]);
-    }
-  };
-
-  const fetchPharmacies = async () => {
-    try {
-      const response = await fetch(`${config.apiUrl}/api/medications/pharmacies`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPharmacies(data.pharmacies || []);
-      }
-    } catch (error) {
-      console.error('Error fetching pharmacies:', error);
-      setPharmacies([]);
-    }
-  };
-
   const fetchMedications = async () => {
     if (!selectedPatient) return;
     setLoading(true);
     try {
-      const [activeRes, inactiveRes] = await Promise.all([
-        fetch(`${config.apiUrl}/api/admin/medications/active?patient_id=${selectedPatient.id}`, {
-          credentials: 'include'
-        }),
-        fetch(`${config.apiUrl}/api/admin/medications/inactive?patient_id=${selectedPatient.id}`, {
-          credentials: 'include'
-        })
-      ]);
-
-      if (activeRes.ok && inactiveRes.ok) {
-        const active = await activeRes.json();
-        const inactive = await inactiveRes.json();
-
-        // Admin endpoints already include schedules
-        setActiveMedications(active);
-        setInactiveMedications(inactive);
+      const res = await fetch(
+        `${config.apiUrl}/api/admin/medications/active?patient_id=${selectedPatient.id}`,
+        { credentials: 'include' }
+      );
+      if (res.ok) {
+        setActiveMedications(await res.json());
       }
     } catch (error) {
       console.error('Error fetching medications:', error);
@@ -165,214 +107,6 @@ const MedicationModal = ({ onClose }) => {
     }
   };
 
-  const fetchMedicationSchedules = async (medicationId) => {
-    try {
-      const response = await fetch(`${config.apiUrl}/api/medications/${medicationId}/schedules`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        return data.schedules || [];
-      }
-      return [];
-    } catch (error) {
-      console.error('Error fetching schedules for medication:', medicationId, error);
-      return [];
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      concentration: '',
-      quantity: '',
-      quantityUnit: 'tablets',
-      instructions: '',
-      startDate: '',
-      asNeeded: false,
-      notes: '',
-      isPatientSpecific: false,
-      prescriberId: '',
-      pharmacyId: ''
-    });
-    setEditingMed(null);
-    // Don't automatically hide the form - let the caller decide
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    
-    try {
-      if (editingMed) {
-        // Update existing medication
-        const response = await fetch(`${config.apiUrl}/api/medications/${editingMed.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            name: formData.name,
-            concentration: formData.concentration,
-            quantity: formData.quantity,
-            quantity_unit: formData.quantityUnit,
-            instructions: formData.instructions,
-            start_date: formData.startDate,
-            as_needed: formData.asNeeded,
-            notes: formData.notes,
-            is_patient_specific: formData.isPatientSpecific,
-            prescriber_id: formData.prescriberId || null,
-            pharmacy_id: formData.pharmacyId || null
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to update medication');
-        }
-      } else {
-        // Add new medication
-        const response = await fetch(`${config.apiUrl}/api/add/medication`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            name: formData.name,
-            concentration: formData.concentration,
-            quantity: formData.quantity,
-            quantity_unit: formData.quantityUnit,
-            instructions: formData.instructions,
-            start_date: formData.startDate,
-            as_needed: formData.asNeeded,
-            notes: formData.notes,
-            is_patient_specific: formData.isPatientSpecific,
-            prescriber_id: formData.prescriberId || null,
-            pharmacy_id: formData.pharmacyId || null,
-            admin_patient_id: formData.isPatientSpecific && selectedPatient ? selectedPatient.id : null
-          })
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to add medication');
-        }
-      }
-      
-      // Refresh medications list
-      await fetchMedications();
-      resetForm();
-      setShowAddForm(false);
-      setShowScheduleFor(null);
-      setEditingMed(null);
-    } catch (error) {
-      console.error('Error saving medication:', error);
-      alert('Error saving medication. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEdit = (med) => {
-    console.log('Editing medication:', med); // Debug log
-    setFormData({
-      name: med.name,
-      concentration: med.concentration || '',
-      quantity: med.quantity || '',
-      quantityUnit: med.quantity_unit || 'tablets',
-      instructions: med.instructions || '',
-      startDate: med.start_date || '',
-      asNeeded: med.as_needed || false,
-      notes: med.notes || '',
-      isPatientSpecific: med.patient_id !== null,
-      prescriberId: med.prescriber_id ? String(med.prescriber_id) : '',
-      pharmacyId: med.pharmacy_id ? String(med.pharmacy_id) : ''
-    });
-    setEditingMed(med);
-    setShowAddForm(true);
-    setShowScheduleFor(null);
-    setShowHistory(false);
-    setTab('active'); // Switch to active tab when editing
-  };
-
-  const handleDelete = async (id) => {
-    if (confirm('Are you sure you want to delete this medication?')) {
-      setLoading(true);
-      try {
-        const response = await fetch(`${config.apiUrl}/api/medications/${id}`, {
-          method: 'DELETE',
-          credentials: 'include'
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to delete medication');
-        }
-        
-        await fetchMedications();
-      } catch (error) {
-        console.error('Error deleting medication:', error);
-        alert('Error deleting medication. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
-  const toggleActive = async (id) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${config.apiUrl}/api/medications/${id}/toggle-active`, {
-        method: 'POST',
-        credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to toggle medication status');
-      }
-      
-      await fetchMedications();
-    } catch (error) {
-      console.error('Error toggling medication status:', error);
-      alert('Error updating medication status. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatSchedule = (med) => {
-    if (med.asNeeded) return 'As needed';
-    
-    if (med.scheduleDays && med.scheduleDays.length > 0) {
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const selectedDays = med.scheduleDays.map(day => days[day]).join(', ');
-      return `${selectedDays} at ${med.scheduleTime}`;
-    }
-    
-    return 'No schedule set';
-  };
-
-  const formatTime = (timeString) => {
-    try {
-      const date = new Date(timeString);
-      return date.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      });
-    } catch (error) {
-      return timeString;
-    }
-  };
-
-  const formatDate = (dateString) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', { 
-        weekday: 'short',
-        month: 'short', 
-        day: 'numeric' 
-      });
-    } catch (error) {
-      return dateString;
-    }
-  };
-
   const getStatusColor = (status) => {
     switch (status) {
       case 'completed_on_time':
@@ -383,6 +117,7 @@ const MedicationModal = ({ onClose }) => {
         return { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
       case 'skipped':
         return { bg: '#e2e3e5', border: '#6c757d', text: '#495057' };
+      case 'ready':
       case 'due_on_time':
         return { bg: '#d4edda', border: '#28a745', text: '#155724' };
       case 'due_warning':
@@ -391,6 +126,7 @@ const MedicationModal = ({ onClose }) => {
         return { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
       case 'missed':
         return { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
+      case 'upcoming':
       case 'pending':
         return { bg: '#d1ecf1', border: '#17a2b8', text: '#0c5460' };
       default:
@@ -401,7 +137,7 @@ const MedicationModal = ({ onClose }) => {
   const getStatusText = (item) => {
     const status = item.status;
     const isToday = new Date(item.scheduled_time).toDateString() === new Date().toDateString();
-    
+
     switch (status) {
       case 'completed_on_time':
         return isToday ? 'Completed' : 'Completed on time';
@@ -411,6 +147,7 @@ const MedicationModal = ({ onClose }) => {
         return isToday ? 'Completed (very late/early)' : 'Completed with significant timing variance';
       case 'skipped':
         return 'Skipped';
+      case 'ready':
       case 'due_on_time':
         return 'Ready to take';
       case 'due_warning':
@@ -419,6 +156,7 @@ const MedicationModal = ({ onClose }) => {
         return 'Very late (>2 hours)';
       case 'missed':
         return 'Missed';
+      case 'upcoming':
       case 'pending':
         return 'Upcoming';
       default:
@@ -426,445 +164,119 @@ const MedicationModal = ({ onClose }) => {
     }
   };
 
-  // Helper function to parse cron expression
-  const allMedications = [...activeMedications, ...inactiveMedications];
+  // Map backend item.status → filter category key. The daily endpoint emits
+  // statuses the legacy client-side recomputer didn't know about (e.g. `ready`,
+  // `upcoming`), which previously fell through to 'unknown' and broke filtering.
+  const statusCategory = (item) => {
+    switch (item?.status) {
+      case 'completed_on_time': return 'on_time';
+      case 'completed_warning': return 'warning';
+      case 'completed_late':    return 'late_early';
+      case 'skipped':           return 'skipped';
+      case 'upcoming':
+      case 'pending':           return 'upcoming';
+      case 'ready':
+      case 'due_on_time':       return 'ready_to_take';
+      case 'due_warning':
+      case 'due_late':
+      case 'missed':            return 'missed';
+      default:                  return 'unknown';
+    }
+  };
 
-  const renderMedicationCard = (med) => (
-    <div key={med.id} className="medication-card" style={{
-      backgroundColor: '#fff',
-      borderRadius: '6px',
-      padding: '12px',
-      marginBottom: '8px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-      border: `1px solid ${med.active ? '#28a745' : '#6c757d'}`,
-      borderLeft: `4px solid ${med.active ? '#28a745' : '#6c757d'}`
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+  const formatTimestamp = (iso) => {
+    if (!iso) return null;
+    try {
+      return new Date(iso).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const renderMedicationCard = (med) => {
+    const lastGiven = formatTimestamp(med.last_administered);
+    // Some meds are marked PRN but still carry a schedule (e.g. olanzapine
+    // with an as-needed flag plus a scheduled dose). Surface next_due whenever
+    // it's populated rather than gating on as_needed.
+    const nextDue = formatTimestamp(med.next_due);
+    return (
+      <div key={med.id} className="medication-card" style={{
+        backgroundColor: '#fff',
+        borderRadius: '6px',
+        padding: '12px',
+        marginBottom: '8px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+        border: '1px solid #28a745',
+        borderLeft: '4px solid #28a745'
+      }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <h4 style={{ margin: 0, color: '#333', fontSize: '16px', fontWeight: '600', truncate: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+            <h4 style={{ margin: 0, color: '#333', fontSize: '16px', fontWeight: 600 }}>
               {med.name}
             </h4>
             {med.concentration && (
-              <span style={{ fontSize: '12px', color: '#666', fontWeight: '500' }}>
+              <span style={{ fontSize: 12, color: '#666', fontWeight: 500 }}>
                 {med.concentration}
               </span>
             )}
+            {med.as_needed && (
+              <span style={{
+                background: '#ede1ff', color: '#6f42c1',
+                padding: '2px 8px', borderRadius: 10,
+                fontSize: 11, fontWeight: 600
+              }}>
+                PRN
+              </span>
+            )}
           </div>
-          
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '13px', color: '#666' }}>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+            gap: '6px 16px',
+            fontSize: 13,
+            color: '#555'
+          }}>
             <span>
-              <strong>{med.quantity}</strong> {med.quantity_unit || med.quantityUnit || 'units'}
+              <strong style={{ color: '#333' }}>On hand:</strong>{' '}
+              {med.quantity ?? '—'} {med.quantity_unit || 'units'}
             </span>
-            {med.startDate && (
+            <span>
+              <strong style={{ color: '#333' }}>Last given:</strong>{' '}
+              {lastGiven
+                ? (
+                  <>
+                    {lastGiven}
+                    {med.last_dose_amount != null && (
+                      <span style={{ color: '#888' }}> ({med.last_dose_amount})</span>
+                    )}
+                  </>
+                )
+                : <span style={{ color: '#999' }}>never</span>}
+            </span>
+            {nextDue && (
               <span>
-                Start: {new Date(med.startDate).toLocaleDateString()}
-              </span>
-            )}
-            {med.schedules && med.schedules.length > 0 && (
-              <span style={{ 
-                background: '#e3f2fd', 
-                color: '#1976d2', 
-                padding: '2px 6px', 
-                borderRadius: '10px', 
-                fontSize: '11px',
-                fontWeight: '600'
-              }}>
-                {med.schedules.length} schedule{med.schedules.length !== 1 ? 's' : ''}
-              </span>
-            )}
-            {med.is_global !== undefined && (
-              <span style={{ 
-                background: med.is_global ? '#f0f0f0' : '#e8f5e8', 
-                color: med.is_global ? '#666' : '#28a745', 
-                padding: '2px 6px', 
-                borderRadius: '10px', 
-                fontSize: '11px',
-                fontWeight: '600'
-              }}>
-                {med.is_global ? 'Global' : 'Patient'}
+                <strong style={{ color: '#333' }}>Next due:</strong> {nextDue}
               </span>
             )}
           </div>
-          
+
           {med.notes && (
-            <div style={{ fontSize: '12px', color: '#777', marginTop: '4px', fontStyle: 'italic' }}>
-              {med.notes.length > 50 ? med.notes.substring(0, 50) + '...' : med.notes}
+            <div style={{ fontSize: 12, color: '#777', marginTop: 8, fontStyle: 'italic' }}>
+              {med.notes.length > 80 ? med.notes.substring(0, 80) + '…' : med.notes}
             </div>
           )}
         </div>
-        
-        <div style={{ display: 'flex', gap: '4px', marginLeft: '12px', flexShrink: 0 }}>
-          <button
-            onClick={() => setShowScheduleFor(med.id)}
-            style={{
-              padding: '4px 8px',
-              border: 'none',
-              borderRadius: '4px',
-              backgroundColor: med.schedules && med.schedules.length > 0 ? '#ffc107' : '#17a2b8',
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: '11px',
-              fontWeight: '600'
-            }}
-            title="Manage schedules"
-          >
-            📅
-          </button>
-          <button
-            onClick={() => handleEdit(med)}
-            style={{
-              padding: '4px 8px',
-              border: 'none',
-              borderRadius: '4px',
-              backgroundColor: '#007bff',
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: '11px',
-              fontWeight: '600'
-            }}
-            title="Edit medication"
-          >
-            ✏️
-          </button>
-          <button
-            onClick={() => toggleActive(med.id)}
-            style={{
-              padding: '4px 8px',
-              border: 'none',
-              borderRadius: '4px',
-              backgroundColor: med.active ? '#6c757d' : '#28a745',
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: '11px',
-              fontWeight: '600'
-            }}
-            title={med.active ? 'Pause medication' : 'Resume medication'}
-          >
-            {med.active ? '⏸️' : '▶️'}
-          </button>
-          <button
-            onClick={() => handleDelete(med.id)}
-            style={{
-              padding: '4px 8px',
-              border: 'none',
-              borderRadius: '4px',
-              backgroundColor: '#dc3545',
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: '11px',
-              fontWeight: '600'
-            }}
-            title="Delete medication"
-          >
-            🗑️
-          </button>
-        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  const renderForm = () => (
-    <div style={{
-      backgroundColor: '#fff',
-      borderRadius: '8px',
-      padding: '24px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-    }}>
-      <h3 style={{ margin: '0 0 24px 0', color: '#333' }}>
-        {editingMed ? 'Edit Medication' : 'Add New Medication'}
-      </h3>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
-              Medication Name *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #ddd',
-                borderRadius: '6px',
-                fontSize: '14px',
-                boxSizing: 'border-box',
-                backgroundColor: '#f8f9fa',
-                color: '#333'
-              }}
-              placeholder="Enter medication name"
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
-              Concentration
-            </label>
-            <input
-              type="text"
-              value={formData.concentration}
-              onChange={(e) => setFormData(prev => ({ ...prev, concentration: e.target.value }))}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #ddd',
-                borderRadius: '6px',
-                fontSize: '14px',
-                boxSizing: 'border-box',
-                backgroundColor: '#f8f9fa',
-                color: '#333'
-              }}
-              placeholder="e.g., 500mg/tablet, 25mg/5ml"
-            />
-          </div>
-        </div>
+  // Admin actions (edit/toggle/delete/manage schedules) intentionally removed
+  // from the live dashboard modal. Cards are info-only; admin lives in
+  // /admin-v2/medications.
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
-              Quantity *
-            </label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="number"
-                step="0.001"
-                min="0"
-                required
-                value={formData.quantity}
-                onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))}
-                style={{
-                  flex: '2',
-                  padding: '12px',
-                  border: '2px solid #ddd',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                  backgroundColor: '#f8f9fa',
-                  color: '#333'
-                }}
-                placeholder="0.000"
-              />
-              <select
-                value={formData.quantityUnit}
-                onChange={(e) => setFormData(prev => ({ ...prev, quantityUnit: e.target.value }))}
-                style={{
-                  flex: '1',
-                  padding: '12px',
-                  border: '2px solid #ddd',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                  backgroundColor: '#f8f9fa',
-                  color: '#333'
-                }}
-              >
-                <option value="tablets">tablets</option>
-                <option value="capsules">capsules</option>
-                <option value="pills">pills</option>
-                <option value="ml">ml</option>
-                <option value="cc">cc</option>
-                <option value="bottles">bottles</option>
-                <option value="boxes">boxes</option>
-                <option value="packets">packets</option>
-                <option value="vials">vials</option>
-                <option value="tubes">tubes</option>
-                <option value="patches">patches</option>
-                <option value="inhalers">inhalers</option>
-                <option value="syringes">syringes</option>
-                <option value="ampules">ampules</option>
-                <option value="doses">doses</option>
-                <option value="units">units</option>
-                <option value="grams">grams</option>
-                <option value="ounces">ounces</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
-              Start Date
-            </label>
-            <input
-              type="date"
-              value={formData.startDate}
-              onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #ddd',
-                borderRadius: '6px',
-                fontSize: '14px',
-                boxSizing: 'border-box',
-                backgroundColor: '#f8f9fa',
-                color: '#333'
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Checkboxes */}
-        <div style={{ display: 'flex', gap: '24px', marginTop: '8px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={formData.asNeeded}
-              onChange={(e) => setFormData(prev => ({ ...prev, asNeeded: e.target.checked }))}
-              style={{
-                width: '16px',
-                height: '16px',
-                cursor: 'pointer'
-              }}
-            />
-            <span style={{ fontWeight: '500', color: '#333', fontSize: '14px' }}>
-              Take as needed (PRN)
-            </span>
-          </label>
-          
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={formData.isPatientSpecific}
-              onChange={(e) => setFormData(prev => ({ ...prev, isPatientSpecific: e.target.checked }))}
-              style={{
-                width: '16px',
-                height: '16px',
-                cursor: 'pointer'
-              }}
-            />
-            <span style={{ fontWeight: '500', color: '#333', fontSize: '14px' }}>
-              Patient-specific medication
-            </span>
-            <span style={{ fontSize: '12px', color: '#666', fontStyle: 'italic' }}>
-              (uncheck for shared/global medication)
-            </span>
-          </label>
-        </div>
-
-        <div>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
-            Prescriber (Optional)
-          </label>
-          {/* Debug info */}
-          {console.log('Current prescriberId:', formData.prescriberId, 'Available providers:', providers)}
-          <select
-            value={formData.prescriberId}
-            onChange={(e) => setFormData(prev => ({ ...prev, prescriberId: e.target.value }))}
-            style={{
-              width: '100%',
-              padding: '12px',
-              border: '2px solid #ddd',
-              borderRadius: '6px',
-              fontSize: '14px',
-              boxSizing: 'border-box',
-              backgroundColor: '#f8f9fa',
-              color: '#333'
-            }}
-          >
-            <option value="">Select a prescriber</option>
-            {providers.map(provider => (
-              <option key={provider.id} value={provider.id}>
-                {provider.name} {provider.specialty ? `(${provider.specialty})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
-            Pharmacy (Optional)
-          </label>
-          {/* Debug info */}
-          {console.log('Current pharmacyId:', formData.pharmacyId, 'Available pharmacies:', pharmacies)}
-          <select
-            value={formData.pharmacyId}
-            onChange={(e) => setFormData(prev => ({ ...prev, pharmacyId: e.target.value }))}
-            style={{
-              width: '100%',
-              padding: '12px',
-              border: '2px solid #ddd',
-              borderRadius: '6px',
-              fontSize: '14px',
-              boxSizing: 'border-box',
-              backgroundColor: '#f8f9fa',
-              color: '#333'
-            }}
-          >
-            <option value="">Select a pharmacy</option>
-            {pharmacies.map(pharmacy => (
-              <option key={pharmacy.id} value={pharmacy.id}>
-                {pharmacy.name}
-                {pharmacy.address && ` - ${pharmacy.address}`}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
-            Notes
-          </label>
-          <textarea
-            value={formData.notes}
-            onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-            style={{
-              width: '100%',
-              padding: '12px',
-              border: '2px solid #ddd',
-              borderRadius: '6px',
-              fontSize: '14px',
-              boxSizing: 'border-box',
-              backgroundColor: '#f8f9fa',
-              color: '#333',
-              minHeight: '60px',
-              resize: 'vertical'
-            }}
-            placeholder="Additional notes or instructions"
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <button
-            type="button"
-            onClick={() => {
-              resetForm();
-              setShowAddForm(false);
-              setShowScheduleFor(null);
-              setEditingMed(null);
-            }}
-            style={{
-              padding: '12px 24px',
-              border: '2px solid #6c757d',
-              borderRadius: '6px',
-              backgroundColor: '#fff',
-              color: '#6c757d',
-              cursor: 'pointer',
-              fontWeight: '500',
-              fontSize: '14px'
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            style={{
-              padding: '12px 24px',
-              border: 'none',
-              borderRadius: '6px',
-              backgroundColor: '#007bff',
-              color: '#fff',
-              cursor: 'pointer',
-              fontWeight: '500',
-              fontSize: '14px'
-            }}
-            disabled={loading}
-          >
-            {loading ? 'Saving...' : (editingMed ? 'Update Medication' : 'Add Medication')}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
 
   // Handler for Mark Taken/Take Now
   const handleMarkTaken = (item) => {
@@ -873,6 +285,10 @@ const MedicationModal = ({ onClose }) => {
 
   const handleConfirmMarkTaken = async () => {
     const { item } = confirmModal;
+    // Backend gates BOTH edges of the administration window; the inline warning
+    // banner is the user's acknowledgement, so pass early_override for either.
+    const { status } = checkAdministrationWindow(item?.scheduled_time);
+    const offWindow = status === 'early' || status === 'late';
     setLoading(true);
     try {
       const res = await fetch(`${config.apiUrl}/api/medications/${item.medication_id}/administer`, {
@@ -884,6 +300,7 @@ const MedicationModal = ({ onClose }) => {
           schedule_id: item.schedule_id,
           scheduled_time: item.scheduled_time,
           notes: '',
+          early_override: offWindow,
           ...(selectedPatient && { patient_id: selectedPatient.id })
         })
       });
@@ -892,7 +309,8 @@ const MedicationModal = ({ onClose }) => {
         fetchMedications();
         fetchScheduledMedications();
       } else {
-        alert('Failed to record medication administration.');
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || 'Failed to record medication administration.');
       }
     } catch (e) {
       alert('Error recording medication administration.');
@@ -970,6 +388,8 @@ const MedicationModal = ({ onClose }) => {
     
     for (const med of selectedMedications) {
       try {
+        const { status } = checkAdministrationWindow(med.scheduled_time);
+        const offWindow = status === 'early' || status === 'late';
         const res = await fetch(`${config.apiUrl}/api/medications/${med.medication_id}/administer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -979,6 +399,7 @@ const MedicationModal = ({ onClose }) => {
             schedule_id: med.schedule_id,
             scheduled_time: med.scheduled_time,
             notes: 'Administered via bulk mark all',
+            early_override: offWindow,
             ...(selectedPatient && { patient_id: selectedPatient.id })
           })
         });
@@ -1009,85 +430,135 @@ const MedicationModal = ({ onClose }) => {
   };
 
   const handleMarkAllCancel = () => {
-    setMarkAllModal({ 
-      open: false, 
-      timeGroup: null, 
-      medications: [], 
+    setMarkAllModal({
+      open: false,
+      timeGroup: null,
+      medications: [],
       selectedMeds: new Set(),
       loading: false,
       completedMeds: new Set()
     });
   };
 
+  // PRN handlers
+  const openPrnPicker = () => {
+    setPrnError(null);
+    setPrnModal({ open: true, selectedMed: null });
+  };
+
+  const closePrnModal = () => {
+    setPrnModal({ open: false, selectedMed: null });
+    setPrnError(null);
+    setPrnSaving(false);
+  };
+
+  const pickPrnMed = (med) => {
+    const firstSchedule = med.schedules?.[0];
+    setPrnForm({
+      dose_amount: firstSchedule?.dose_amount?.toString() || '',
+      dose_unit: firstSchedule?.dose_unit || med.quantity_unit || '',
+      given_at: getCurrentLocalDateTime(),
+      notes: '',
+    });
+    setPrnError(null);
+    setPrnModal({ open: true, selectedMed: med });
+  };
+
+  const handlePrnSave = async () => {
+    if (!prnModal.selectedMed || !selectedPatient) return;
+    setPrnSaving(true);
+    setPrnError(null);
+    try {
+      const res = await fetch(
+        `${config.apiUrl}/api/medications/${prnModal.selectedMed.id}/administer`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            patient_id: selectedPatient.id,
+            dose_amount: parseFloat(prnForm.dose_amount) || 0,
+            notes: prnForm.notes || null,
+            administered_at: localDateTimeToUTC(prnForm.given_at),
+          }),
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Failed to record administration');
+      }
+      await fetchMedications();
+      await fetchScheduledMedications();
+      closePrnModal();
+    } catch (err) {
+      setPrnError(err.message);
+    } finally {
+      setPrnSaving(false);
+    }
+  };
+
+  const prnMedications = activeMedications.filter(m => m.as_needed);
+
   return (
     <ModalBase isOpen={true} onClose={onClose} title={
       isMobile ? (
-        <select
-          value={showAddForm ? 'add' : showHistory ? 'history' : tab}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === 'add') {
-              setShowAddForm(true);
-              setShowScheduleFor(null);
-              setEditingMed(null);
-              setShowHistory(false);
-            } else if (value === 'history') {
-              setTab('history');
-              setShowHistory(true);
-              setShowAddForm(false);
-              setShowScheduleFor(null);
-              setEditingMed(null);
-              resetForm();
-            } else {
-              setTab(value);
-              setShowHistory(false);
-              setShowAddForm(false);
-              setShowScheduleFor(null);
-              setEditingMed(null);
-              resetForm();
-            }
-          }}
-          style={{
-            width: '100%',
-            padding: '12px 16px',
-            fontSize: '15px',
-            fontWeight: '600',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '8px',
-            backgroundColor: '#1a2332',
-            color: '#fff',
-            cursor: 'pointer',
-            outline: 'none',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-            WebkitAppearance: 'none',
-            MozAppearance: 'none',
-            appearance: 'none',
-            backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")',
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 12px center',
-            backgroundSize: '20px',
-            paddingRight: '40px'
-          }}
-        >
-          <option value="scheduled" style={{ backgroundColor: '#1a2332', color: '#fff' }}>📅 Scheduled</option>
-          <option value="active" style={{ backgroundColor: '#1a2332', color: '#fff' }}>✓ Active ({activeMedications.length})</option>
-          <option value="inactive" style={{ backgroundColor: '#1a2332', color: '#fff' }}>⏸ Inactive ({inactiveMedications.length})</option>
-          <option value="history" style={{ backgroundColor: '#1a2332', color: '#fff' }}>📜 History</option>
-          <option value="add" style={{ backgroundColor: '#1a2332', color: '#fff' }}>➕ Add Medication</option>
-        </select>
+        <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+          <select
+            value={tab}
+            onChange={(e) => setTab(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              fontSize: '15px',
+              fontWeight: '600',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '8px',
+              backgroundColor: '#1a2332',
+              color: '#fff',
+              cursor: 'pointer',
+              outline: 'none',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+              WebkitAppearance: 'none',
+              MozAppearance: 'none',
+              appearance: 'none',
+              backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")',
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 12px center',
+              backgroundSize: '20px',
+              paddingRight: '40px',
+              minWidth: 0,
+            }}
+          >
+            <option value="scheduled" style={{ backgroundColor: '#1a2332', color: '#fff' }}>Scheduled</option>
+            <option value="active" style={{ backgroundColor: '#1a2332', color: '#fff' }}>Active ({activeMedications.length})</option>
+          </select>
+          <button
+            onClick={openPrnPicker}
+            disabled={!selectedPatient}
+            style={{
+              padding: '12px 18px',
+              border: 'none',
+              borderRadius: '8px',
+              backgroundColor: '#6f42c1',
+              color: '#fff',
+              cursor: selectedPatient ? 'pointer' : 'not-allowed',
+              opacity: selectedPatient ? 1 : 0.6,
+              fontWeight: '600',
+              fontSize: '15px',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+              flexShrink: 0,
+            }}
+            title={selectedPatient ? 'Give an as-needed (PRN) medication' : 'Select a patient first'}
+          >
+            PRN
+          </button>
+        </div>
       ) : (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
-              onClick={() => { 
-                setTab('scheduled'); 
-                setShowHistory(false); 
-                setShowAddForm(false);
-                setShowScheduleFor(null);
-                setEditingMed(null);
-                resetForm();
-              }}
+              onClick={() => setTab('scheduled')}
               style={{
                 padding: '8px 16px',
                 border: 'none',
@@ -1102,14 +573,7 @@ const MedicationModal = ({ onClose }) => {
               Scheduled
             </button>
             <button
-              onClick={() => { 
-                setTab('active'); 
-                setShowHistory(false); 
-                setShowAddForm(false);
-                setShowScheduleFor(null);
-                setEditingMed(null);
-                resetForm();
-              }}
+              onClick={() => setTab('active')}
               style={{
                 padding: '8px 16px',
                 border: 'none',
@@ -1124,81 +588,21 @@ const MedicationModal = ({ onClose }) => {
               Active ({activeMedications.length})
             </button>
             <button
-              onClick={() => { 
-                setTab('inactive'); 
-                setShowHistory(false); 
-                setShowAddForm(false);
-                setShowScheduleFor(null);
-                setEditingMed(null);
-                resetForm();
-              }}
+              onClick={openPrnPicker}
               style={{
                 padding: '8px 16px',
                 border: 'none',
                 borderRadius: '6px',
-                backgroundColor: tab === 'inactive' ? '#007bff' : '#f8f9fa',
-                color: tab === 'inactive' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '14px'
-              }}
-            >
-              Inactive ({inactiveMedications.length})
-            </button>
-            <button
-              onClick={() => {
-                setTab('history');
-                setShowHistory(true);
-                setShowAddForm(false);
-                setShowScheduleFor(null);
-                setEditingMed(null);
-                resetForm();
-              }}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: tab === 'history' ? '#007bff' : '#f8f9fa',
-                color: tab === 'history' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '14px'
-              }}
-            >
-              History
-            </button>
-            <button
-              onClick={() => { 
-                if (showAddForm) {
-                  // Cancel: hide form and reset all state
-                  setShowAddForm(false);
-                  setShowScheduleFor(null);
-                  setEditingMed(null);
-                  setShowHistory(false);
-                  resetForm();
-                } else {
-                  // Show form: reset all state and show add form
-                  setShowAddForm(true);
-                  setShowScheduleFor(null);
-                  setEditingMed(null);
-                  setShowHistory(false);
-                  setTab('active'); // Switch to active tab when adding new medication
-                  resetForm();
-                }
-              }}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: showAddForm ? '#dc3545' : '#28a745',
+                backgroundColor: '#6f42c1',
                 color: '#fff',
                 cursor: 'pointer',
                 fontWeight: '500',
                 fontSize: '14px'
               }}
-              disabled={loading}
+              disabled={loading || !selectedPatient}
+              title={selectedPatient ? 'Give an as-needed (PRN) medication' : 'Select a patient first'}
             >
-              {showAddForm ? 'Cancel' : 'Add'}
+              PRN
             </button>
           </div>
         </div>
@@ -1213,23 +617,7 @@ const MedicationModal = ({ onClose }) => {
               Loading...
             </div>
           )}
-          {!loading && showScheduleFor ? (
-            <MedicationScheduleView 
-              med={allMedications.find(m => m.id === showScheduleFor) || {schedules: []}}
-              onBack={() => setShowScheduleFor(null)}
-              fetchMedications={fetchMedications}
-              loading={loading}
-              setLoading={setLoading}
-              scheduledMedications={scheduledMedications.scheduled_medications}
-              showStatusFilters={true}
-              patients={patients}
-              currentPatientId={selectedPatient?.id}
-            />
-          ) : !loading && showHistory ? (
-            <MedicationHistory onBack={() => { setShowHistory(false); setTab('scheduled'); }} />
-          ) : !loading && showAddForm ? (
-            renderForm()
-          ) : !loading ? (
+          {!loading ? (
             <div>
               {tab === 'scheduled' ? (
                 <div>
@@ -1337,8 +725,8 @@ const MedicationModal = ({ onClose }) => {
                               const statusCounts = {};
                               if (scheduledMedications.scheduled_medications) {
                                 scheduledMedications.scheduled_medications.forEach(item => {
-                                  const status = medicationStatusUtils.getMedicationStatus(item);
-                                  statusCounts[status] = (statusCounts[status] || 0) + 1;
+                                  const cat = statusCategory(item);
+                                  statusCounts[cat] = (statusCounts[cat] || 0) + 1;
                                 });
                               }
 
@@ -1381,8 +769,7 @@ const MedicationModal = ({ onClose }) => {
                       {(() => {
                         // Filter medications by selected status filters
                         const filteredMedications = scheduledMedications.scheduled_medications.filter(item => {
-                          const status = medicationStatusUtils.getMedicationStatus(item);
-                          return statusFilters[status];
+                          return statusFilters[statusCategory(item)];
                         });
 
                         // Group filtered meds by day (YYYY-MM-DD), then by formatted time string
@@ -1448,7 +835,6 @@ const MedicationModal = ({ onClose }) => {
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                                       {groupByDay[dayKey][timeStr].map((item, idx) => {
-                                        const calculatedStatus = medicationStatusUtils.getMedicationStatus(item);
                                         const colors = getStatusColor(item.status);
                                         const isCompleted = item.is_completed;
                                         const isToday = new Date(item.scheduled_time).toDateString() === new Date().toDateString();
@@ -1457,79 +843,88 @@ const MedicationModal = ({ onClose }) => {
                                             key={`scheduled-${dayKey}-${timeStr}-${idx}`}
                                             style={{
                                               backgroundColor: colors.bg,
-                                              borderRadius: 12,
-                                              padding: '14px 18px',
+                                              borderRadius: isMobile ? 10 : 12,
+                                              padding: isMobile ? '12px 14px' : '14px 18px',
                                               boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                                               border: `1.5px solid ${colors.border}`,
+                                              borderLeft: `6px solid ${colors.border}`,
                                               display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '12px',
+                                              flexDirection: isMobile ? 'column' : 'row',
+                                              alignItems: isMobile ? 'stretch' : 'center',
+                                              gap: isMobile ? '10px' : '12px',
                                               marginBottom: 0,
                                               opacity: isCompleted && isToday ? 0.7 : 1,
-                                              order: isCompleted && isToday ? 1 : 0
+                                              order: isCompleted && isToday ? 1 : 0,
                                             }}
                                           >
-                                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
-                                              <span style={{ color: colors.text, fontSize: '16px', fontWeight: '600' }}>
+                                            <div style={{
+                                              flex: 1,
+                                              display: 'flex',
+                                              flexDirection: isMobile ? 'column' : 'row',
+                                              alignItems: isMobile ? 'flex-start' : 'center',
+                                              gap: isMobile ? 6 : 10,
+                                            }}>
+                                              <span style={{ color: colors.text, fontSize: isMobile ? '15px' : '16px', fontWeight: '600', lineHeight: 1.3 }}>
                                                 {item.medication_name}{item.concentration ? ` (${item.concentration})` : ''}
                                               </span>
-                                              <span style={{ color: colors.text, fontSize: '14px', fontWeight: 500 }}>
-                                                - {item.dose_amount} {item.dose_unit}
+                                              <span style={{ color: colors.text, fontSize: isMobile ? '13px' : '14px', fontWeight: 500, opacity: 0.85 }}>
+                                                {isMobile ? '' : '- '}{item.dose_amount} {item.dose_unit}
+                                                {item.type ? ` (${item.type})` : ''}
                                               </span>
-                                              <span style={{ color: colors.text, fontSize: '14px', fontWeight: 500 }}>
-                                                {item.type ? `(${item.type})` : ''}
-                                              </span>
-                                              <span 
-                                                style={{ 
-                                                  backgroundColor: colors.border, 
-                                                  color: '#fff', 
-                                                  padding: '2px 8px', 
-                                                  borderRadius: '12px', 
-                                                  fontSize: '12px',
+                                              <span
+                                                style={{
+                                                  backgroundColor: colors.border,
+                                                  color: '#fff',
+                                                  padding: '2px 8px',
+                                                  borderRadius: '12px',
+                                                  fontSize: isMobile ? '11px' : '12px',
                                                   fontWeight: '500',
-                                                  marginLeft: 8
+                                                  marginLeft: isMobile ? 0 : 8,
+                                                  alignSelf: isMobile ? 'flex-start' : 'center',
                                                 }}
                                               >
                                                 {getStatusText(item)}
                                               </span>
                                             </div>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                            <div style={{
+                                              display: 'flex',
+                                              gap: isMobile ? '6px' : '8px',
+                                              width: isMobile ? '100%' : 'auto',
+                                            }}>
                                               {!isCompleted && (
                                                 <>
                                                   <button
                                                     style={{
-                                                      padding: '6px 14px',
+                                                      padding: isMobile ? '10px 14px' : '6px 14px',
                                                       border: 'none',
                                                       borderRadius: '8px',
                                                       backgroundColor: '#28a745',
                                                       color: '#fff',
                                                       cursor: 'pointer',
-                                                      fontSize: '13px',
+                                                      fontSize: isMobile ? '14px' : '13px',
                                                       fontWeight: '500',
-                                                      boxShadow: '0 1px 2px rgba(0,0,0,0.07)'
+                                                      boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
+                                                      flex: isMobile ? '1' : '0 0 auto',
                                                     }}
-                                                    onClick={() => {
-                                                      handleMarkTaken(item);
-                                                    }}
+                                                    onClick={() => handleMarkTaken(item)}
                                                   >
-                                                    {item.status === 'missed' ? 'Take Now' : 'Mark Taken'}
+                                                    {item.status === 'missed' ? (isMobile ? 'Take Now' : 'Take Now') : (isMobile ? 'Mark Taken' : 'Mark Taken')}
                                                   </button>
                                                   {item.status === 'missed' && (
                                                     <button
                                                       style={{
-                                                        padding: '6px 14px',
+                                                        padding: isMobile ? '10px 14px' : '6px 14px',
                                                         border: '2px solid #6c757d',
                                                         borderRadius: '8px',
                                                         backgroundColor: '#fff',
                                                         color: '#6c757d',
                                                         cursor: 'pointer',
-                                                        fontSize: '13px',
+                                                        fontSize: isMobile ? '14px' : '13px',
                                                         fontWeight: '500',
-                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.07)'
+                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
+                                                        flex: isMobile ? '1' : '0 0 auto',
                                                       }}
-                                                      onClick={() => {
-                                                        handleSkipDose(item);
-                                                      }}
+                                                      onClick={() => handleSkipDose(item)}
                                                     >
                                                       Skip
                                                     </button>
@@ -1594,42 +989,12 @@ const MedicationModal = ({ onClose }) => {
                     backgroundColor: '#f8f9fa',
                     borderRadius: '8px'
                   }}>
-                    <p>No active medications found.</p>
-                    <button
-                      onClick={() => setShowAddForm(true)}
-                      style={{
-                        padding: '10px 20px',
-                        border: 'none',
-                        borderRadius: '6px',
-                        backgroundColor: '#007bff',
-                        color: '#fff',
-                        cursor: 'pointer',
-                        fontWeight: '500',
-                        fontSize: '14px',
-                        marginTop: '10px'
-                      }}
-                    >
-                      Add your first medication
-                    </button>
+                    <p style={{ margin: 0 }}>No active medications for this patient.</p>
                   </div>
                 ) : (
                   activeMedications.map(renderMedicationCard)
                 )
-              ) : (
-                inactiveMedications.length === 0 ? (
-                  <div style={{
-                    textAlign: 'center',
-                    padding: '40px',
-                    color: '#666',
-                    backgroundColor: '#f8f9fa',
-                    borderRadius: '8px'
-                  }}>
-                    <p>No inactive medications found.</p>
-                  </div>
-                ) : (
-                  inactiveMedications.map(renderMedicationCard)
-                )
-              )}
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -1658,10 +1023,40 @@ const MedicationModal = ({ onClose }) => {
             boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
           }}>
             <h3 style={{ margin: '0 0 16px 0', color: '#333' }}>Confirm Administration</h3>
-            <p style={{ margin: '0 0 24px 0', color: '#666' }}>
+            <p style={{ margin: '0 0 16px 0', color: '#666' }}>
               Mark <strong>{confirmModal.item?.medication_name}</strong> as taken?<br/>
               Dose: <strong>{confirmModal.item?.dose_amount} {confirmModal.item?.dose_unit}</strong>
             </p>
+            {(() => {
+              const check = checkAdministrationWindow(confirmModal.item?.scheduled_time);
+              if (check.status !== 'early' && check.status !== 'late') return null;
+              const isEarly = check.status === 'early';
+              const minutes = isEarly ? check.minutesOffset : -check.minutesOffset;
+              return (
+                <div
+                  role="alert"
+                  style={{
+                    background: '#fff8e1',
+                    border: '1px solid #f0ad4e',
+                    borderRadius: 6,
+                    padding: '10px 12px',
+                    marginBottom: 16,
+                    color: '#5a3e00'
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: '#b35a00', marginBottom: 4 }}>
+                    Warning: {isEarly ? 'early' : 'late'} administration
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    This dose {isEarly ? 'is scheduled for' : 'was scheduled for'}{' '}
+                    <strong>{check.scheduledLocal}</strong>
+                    {' '}— that's <strong>{formatDurationMinutes(minutes)}</strong>{' '}
+                    {isEarly ? 'from now' : 'ago'}. Giving a medication more than 1 hour{' '}
+                    {isEarly ? 'early' : 'late'} can be unsafe.
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setConfirmModal({ open: false, item: null })}
@@ -1677,22 +1072,33 @@ const MedicationModal = ({ onClose }) => {
               >
                 Cancel
               </button>
-              <button
-                onClick={handleConfirmMarkTaken}
-                style={{
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: '#28a745',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-                disabled={loading}
-              >
-                {loading ? 'Saving...' : 'Confirm'}
-              </button>
+              {(() => {
+                const { status } = checkAdministrationWindow(confirmModal.item?.scheduled_time);
+                const offWindow = status === 'early' || status === 'late';
+                const label = status === 'early'
+                  ? 'Confirm Early Administration'
+                  : status === 'late'
+                    ? 'Confirm Late Administration'
+                    : 'Confirm';
+                return (
+                  <button
+                    onClick={handleConfirmMarkTaken}
+                    style={{
+                      padding: '8px 16px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      backgroundColor: offWindow ? '#f0ad4e' : '#28a745',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '500'
+                    }}
+                    disabled={loading}
+                  >
+                    {loading ? 'Saving...' : label}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1792,7 +1198,50 @@ const MedicationModal = ({ onClose }) => {
             <p style={{ margin: '0 0 20px 0', color: '#666', fontSize: '14px' }}>
               Select which medications you want to mark as taken:
             </p>
-            
+
+            {(() => {
+              const offWindowMeds = markAllModal.medications
+                .filter(med => markAllModal.selectedMeds.has(med.schedule_id))
+                .map(med => ({ med, check: checkAdministrationWindow(med.scheduled_time) }))
+                .filter(({ check }) => check.status === 'early' || check.status === 'late');
+              if (offWindowMeds.length === 0) return null;
+              return (
+                <div
+                  role="alert"
+                  style={{
+                    background: '#fff8e1',
+                    border: '1px solid #f0ad4e',
+                    borderRadius: 6,
+                    padding: '10px 12px',
+                    marginBottom: 16,
+                    color: '#5a3e00'
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: '#b35a00', marginBottom: 4 }}>
+                    Warning: off-window administration
+                  </div>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>
+                    {offWindowMeds.length === 1
+                      ? '1 selected medication is more than 1 hour outside its scheduled window.'
+                      : `${offWindowMeds.length} selected medications are more than 1 hour outside their scheduled window.`}
+                    {' '}Confirm this is intentional.
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#5a3e00' }}>
+                    {offWindowMeds.map(({ med, check }) => {
+                      const isEarly = check.status === 'early';
+                      const minutes = isEarly ? check.minutesOffset : -check.minutesOffset;
+                      return (
+                        <li key={`off-${med.schedule_id}`}>
+                          <strong>{med.medication_name}</strong> — scheduled {check.scheduledLocal}
+                          {' '}({formatDurationMinutes(minutes)} {isEarly ? 'early' : 'late'})
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })()}
+
             <div style={{ maxHeight: '300px', overflow: 'auto', marginBottom: '20px' }}>
               {markAllModal.medications.map((med, index) => {
                 const isSelected = markAllModal.selectedMeds.has(med.schedule_id);
@@ -1878,37 +1327,295 @@ const MedicationModal = ({ onClose }) => {
               >
                 Cancel
               </button>
-              <button
-                onClick={handleMarkAllConfirm}
-                disabled={markAllModal.loading || markAllModal.selectedMeds.size === 0}
-                style={{
-                  padding: '10px 20px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  backgroundColor: markAllModal.selectedMeds.size === 0 ? '#6c757d' : '#007bff',
-                  color: '#fff',
-                  cursor: (markAllModal.loading || markAllModal.selectedMeds.size === 0) ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  opacity: markAllModal.loading ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                {markAllModal.loading && (
-                  <div style={{
-                    width: '16px',
-                    height: '16px',
-                    border: '2px solid rgba(255,255,255,0.3)',
-                    borderTop: '2px solid #fff',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                  }}></div>
-                )}
-                {markAllModal.loading ? 'Processing...' : `Mark ${markAllModal.selectedMeds.size} Selected`}
-              </button>
+              {(() => {
+                const hasOffWindow = markAllModal.medications
+                  .filter(med => markAllModal.selectedMeds.has(med.schedule_id))
+                  .some(med => {
+                    const { status } = checkAdministrationWindow(med.scheduled_time);
+                    return status === 'early' || status === 'late';
+                  });
+                const disabled = markAllModal.loading || markAllModal.selectedMeds.size === 0;
+                const bg = markAllModal.selectedMeds.size === 0
+                  ? '#6c757d'
+                  : hasOffWindow ? '#f0ad4e' : '#007bff';
+                return (
+                  <button
+                    onClick={handleMarkAllConfirm}
+                    disabled={disabled}
+                    style={{
+                      padding: '10px 20px',
+                      border: 'none',
+                      borderRadius: '6px',
+                      backgroundColor: bg,
+                      color: '#fff',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      opacity: markAllModal.loading ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    {markAllModal.loading && (
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        border: '2px solid rgba(255,255,255,0.3)',
+                        borderTop: '2px solid #fff',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                    )}
+                    {markAllModal.loading
+                      ? 'Processing...'
+                      : hasOffWindow
+                        ? `Confirm Off-Window — ${markAllModal.selectedMeds.size} Selected`
+                        : `Mark ${markAllModal.selectedMeds.size} Selected`}
+                  </button>
+                );
+              })()}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRN Modal — pick an as-needed med, then enter dose/time */}
+      {prnModal.open && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2000
+        }} onClick={closePrnModal}>
+          <div
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: '10px',
+              padding: '24px',
+              maxWidth: '480px',
+              width: '90%',
+              maxHeight: '85vh',
+              overflow: 'auto',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, color: '#333' }}>
+                {prnModal.selectedMed ? `Give PRN — ${prnModal.selectedMed.name}` : 'Give PRN Medication'}
+              </h3>
+              <button
+                onClick={closePrnModal}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 22, color: '#666', lineHeight: 1, padding: 0
+                }}
+                aria-label="Close"
+              >×</button>
+            </div>
+
+            {prnError && (
+              <div role="alert" style={{
+                background: '#f8d7da',
+                border: '1px solid #f5c6cb',
+                borderRadius: 6,
+                padding: '10px 12px',
+                marginBottom: 16,
+                color: '#721c24',
+                fontSize: 13
+              }}>
+                {prnError}
+              </div>
+            )}
+
+            {/* Step 1: pick a PRN med */}
+            {!prnModal.selectedMed && (
+              prnMedications.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px 8px', color: '#666' }}>
+                  No PRN (as-needed) medications for this patient.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {prnMedications.map(med => (
+                    <button
+                      key={med.id}
+                      type="button"
+                      onClick={() => pickPrnMed(med)}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px 14px',
+                        textAlign: 'left',
+                        background: '#f8f9fa',
+                        border: '1px solid #dee2e6',
+                        borderRadius: 6,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <span style={{ display: 'flex', flexDirection: 'column' }}>
+                        <strong style={{ color: '#333' }}>{med.name}</strong>
+                        <span style={{ color: '#666', fontSize: 12 }}>
+                          {med.concentration ? `${med.concentration} • ` : ''}
+                          Last given: {med.last_administered
+                            ? new Date(med.last_administered).toLocaleString(undefined, {
+                                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+                              })
+                            : 'never'}
+                        </span>
+                      </span>
+                      <span style={{
+                        background: '#6f42c1', color: '#fff',
+                        padding: '4px 10px', borderRadius: 12,
+                        fontSize: 12, fontWeight: 600
+                      }}>Give</span>
+                    </button>
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* Step 2: enter dose/time/notes for the picked med */}
+            {prnModal.selectedMed && (
+              <>
+                {prnModal.selectedMed.instructions && (
+                  <div style={{
+                    background: '#f8f9fa',
+                    border: '1px solid #dee2e6',
+                    borderRadius: 6,
+                    padding: '10px 12px',
+                    marginBottom: 16,
+                    color: '#555',
+                    fontSize: 13
+                  }}>
+                    {prnModal.selectedMed.instructions}
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#333', fontSize: 13 }}>
+                      Dose Amount *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={prnForm.dose_amount}
+                      onChange={(e) => setPrnForm(f => ({ ...f, dose_amount: e.target.value }))}
+                      style={{
+                        width: '100%', padding: 10, fontSize: 14,
+                        border: '2px solid #ddd', borderRadius: 6,
+                        boxSizing: 'border-box', background: '#f8f9fa', color: '#333'
+                      }}
+                      placeholder="Amount given"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#333', fontSize: 13 }}>
+                      Unit
+                    </label>
+                    <input
+                      type="text"
+                      value={prnForm.dose_unit}
+                      onChange={(e) => setPrnForm(f => ({ ...f, dose_unit: e.target.value }))}
+                      style={{
+                        width: '100%', padding: 10, fontSize: 14,
+                        border: '2px solid #ddd', borderRadius: 6,
+                        boxSizing: 'border-box', background: '#f8f9fa', color: '#333'
+                      }}
+                      placeholder="mg, ml, tablets..."
+                    />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#333', fontSize: 13 }}>
+                    Given At *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={prnForm.given_at}
+                    onChange={(e) => setPrnForm(f => ({ ...f, given_at: e.target.value }))}
+                    style={{
+                      width: '100%', padding: 10, fontSize: 14,
+                      border: '2px solid #ddd', borderRadius: 6,
+                      boxSizing: 'border-box', background: '#f8f9fa', color: '#333'
+                    }}
+                  />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#333', fontSize: 13 }}>
+                    Notes (optional)
+                  </label>
+                  <textarea
+                    value={prnForm.notes}
+                    onChange={(e) => setPrnForm(f => ({ ...f, notes: e.target.value }))}
+                    rows={2}
+                    style={{
+                      width: '100%', padding: 10, fontSize: 14,
+                      border: '2px solid #ddd', borderRadius: 6,
+                      boxSizing: 'border-box', background: '#f8f9fa', color: '#333',
+                      resize: 'vertical'
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between' }}>
+                  <button
+                    type="button"
+                    onClick={() => setPrnModal({ open: true, selectedMed: null })}
+                    disabled={prnSaving}
+                    style={{
+                      padding: '8px 16px',
+                      border: '1px solid #ddd',
+                      borderRadius: 4,
+                      background: '#fff',
+                      color: '#333',
+                      cursor: prnSaving ? 'not-allowed' : 'pointer',
+                      fontSize: 14
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button
+                      type="button"
+                      onClick={closePrnModal}
+                      disabled={prnSaving}
+                      style={{
+                        padding: '8px 16px',
+                        border: '1px solid #ddd',
+                        borderRadius: 4,
+                        background: '#fff',
+                        color: '#333',
+                        cursor: prnSaving ? 'not-allowed' : 'pointer',
+                        fontSize: 14
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePrnSave}
+                      disabled={prnSaving || !prnForm.dose_amount || !prnForm.given_at}
+                      style={{
+                        padding: '8px 16px',
+                        border: 'none',
+                        borderRadius: 4,
+                        background: '#6f42c1',
+                        color: '#fff',
+                        cursor: (prnSaving || !prnForm.dose_amount || !prnForm.given_at) ? 'not-allowed' : 'pointer',
+                        fontSize: 14,
+                        fontWeight: 500,
+                        opacity: (prnSaving || !prnForm.dose_amount || !prnForm.given_at) ? 0.6 : 1
+                      }}
+                    >
+                      {prnSaving ? 'Saving...' : 'Record Administration'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

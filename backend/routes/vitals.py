@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Date
+from sqlalchemy import func, cast, Date, text
 from datetime import datetime, timedelta
 from db import get_db
 from dependencies import require_read_access
@@ -142,6 +142,107 @@ async def get_vitals_summary(
         
     except Exception as e:
         logger.error(f"Error getting vitals summary for patient {patient_id}: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+# SQL for hourly pulse-ox aggregation with stuck-sensor filter.
+# Stuck-run detection: consecutive samples where (spo2, bpm) are identical
+# and the gap to the previous sample is < 10s are grouped into a "run".
+# Runs whose duration exceeds 1 minute are treated as a frozen/unattached
+# sensor and excluded from the aggregate.
+_PULSE_OX_HOURLY_SQL = text("""
+    WITH samples AS (
+        SELECT
+            timestamp, spo2, bpm,
+            LAG(spo2) OVER w AS prev_spo2,
+            LAG(bpm) OVER w AS prev_bpm,
+            LAG(timestamp) OVER w AS prev_ts
+        FROM pulse_ox_data
+        WHERE patient_id = :patient_id
+          AND timestamp >= :start_ts
+          AND timestamp < :end_ts
+          AND spo2 IS NOT NULL AND spo2 > 0
+          AND bpm IS NOT NULL AND bpm > 0
+        WINDOW w AS (ORDER BY timestamp)
+    ),
+    marked AS (
+        SELECT *,
+            CASE
+                WHEN spo2 = prev_spo2 AND bpm = prev_bpm
+                     AND timestamp - prev_ts < INTERVAL '10 seconds'
+                THEN 0 ELSE 1
+            END AS new_run
+        FROM samples
+    ),
+    runs AS (
+        SELECT *, SUM(new_run) OVER (ORDER BY timestamp) AS run_id FROM marked
+    ),
+    with_dur AS (
+        SELECT *,
+            MAX(timestamp) OVER (PARTITION BY run_id)
+              - MIN(timestamp) OVER (PARTITION BY run_id) AS run_dur
+        FROM runs
+    )
+    SELECT
+        date_trunc('hour', timestamp) AS bucket,
+        MIN(spo2) AS min_spo2,
+        AVG(spo2) AS avg_spo2,
+        MAX(spo2) AS max_spo2,
+        MIN(bpm)  AS min_bpm,
+        AVG(bpm)  AS avg_bpm,
+        MAX(bpm)  AS max_bpm,
+        COUNT(*)  AS n
+    FROM with_dur
+    WHERE run_dur <= INTERVAL '60 seconds'
+    GROUP BY bucket
+    ORDER BY bucket
+""")
+
+
+@router.get("/patient/{patient_id}/pulse-ox-summary")
+async def get_pulse_ox_summary(
+    patient_id: int,
+    days: int = Query(30, ge=1, le=90, description="Number of days to aggregate"),
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+):
+    """
+    Hourly min/avg/max of SpO2 and BPM from raw pulse_ox_data for the trend
+    charts on the patient profile. Excludes samples that look like a stuck
+    or detached sensor (identical spo2+bpm for over 1 minute).
+    """
+    try:
+        end_ts = datetime.now()
+        start_ts = end_ts - timedelta(days=days)
+
+        rows = db.execute(
+            _PULSE_OX_HOURLY_SQL,
+            {"patient_id": patient_id, "start_ts": start_ts, "end_ts": end_ts},
+        ).all()
+
+        spo2_points = []
+        hr_points = []
+        for row in rows:
+            bucket_iso = row.bucket.isoformat()
+            spo2_points.append({
+                "date": bucket_iso,
+                "min": int(row.min_spo2) if row.min_spo2 is not None else None,
+                "avg": round(float(row.avg_spo2), 1) if row.avg_spo2 is not None else None,
+                "max": int(row.max_spo2) if row.max_spo2 is not None else None,
+                "count": int(row.n),
+            })
+            hr_points.append({
+                "date": bucket_iso,
+                "min": int(row.min_bpm) if row.min_bpm is not None else None,
+                "avg": round(float(row.avg_bpm), 1) if row.avg_bpm is not None else None,
+                "max": int(row.max_bpm) if row.max_bpm is not None else None,
+                "count": int(row.n),
+            })
+
+        return {"spo2": spo2_points, "heart_rate": hr_points}
+
+    except Exception as e:
+        logger.error(f"Error getting pulse-ox summary for patient {patient_id}: {e}")
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
@@ -291,10 +392,10 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                     })
                 
             # Dynamically handle any remaining vitals (excluding already processed ones)
-            processed_keys = ["datetime", "timestamp", "bp", "temp", "nutrition", "weight", "notes", "bathroom_type", "bathroom_size", "vital_type", "value"]
+            processed_keys = ["datetime", "timestamp", "bp", "temp", "nutrition", "weight", "notes", "bathroom_type", "bathroom_size", "vital_type", "value", "patient_id"]
             for key, value in vital_data.items():
                 if key not in processed_keys and value is not None and value != "":
-                    vital_id = save_vital(db, key, value, datetime_val, notes)
+                    vital_id = save_vital(db, key, value, datetime_val, notes, patient_id=patient_id)
                     if vital_id:
                         vitals_saved.append({
                             'type': key,

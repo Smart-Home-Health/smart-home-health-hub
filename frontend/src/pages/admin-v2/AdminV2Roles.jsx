@@ -235,8 +235,8 @@ const AdminV2Roles = () => {
       <div className="admin-v2-page">
         <div className="admin-v2-page-header">
           <div>
-            <h1>Role Management</h1>
-            <p className="admin-v2-subtitle">Manage roles and their permissions</p>
+            <h1 className="admin-v2-page-title">Role Management</h1>
+            <p className="admin-v2-page-subtitle">Manage roles and their permissions</p>
           </div>
           <button className="admin-v2-btn admin-v2-btn-primary" onClick={openCreateModal}>
             <PlusIcon size={16} />
@@ -408,7 +408,7 @@ const AdminV2Roles = () => {
                           <div className="admin-v2-permission-pills">
                             {perms.map(perm => {
                               const isSelected = formData.permission_ids.includes(perm.id);
-                              // Extract just the action from permission name (e.g., "view" from "medications.view")
+                              // Extract just the action from permission name (e.g., "read" from "medications.read")
                               const action = perm.name.includes('.') ? perm.name.split('.').pop() : perm.name;
                               const displayAction = action.charAt(0).toUpperCase() + action.slice(1);
                               return (
@@ -527,7 +527,7 @@ const AdminV2Roles = () => {
                           <div className="admin-v2-permission-pills">
                             {perms.map(perm => {
                               const isSelected = formData.permission_ids.includes(perm.id);
-                              // Extract just the action from permission name (e.g., "view" from "medications.view")
+                              // Extract just the action from permission name (e.g., "read" from "medications.read")
                               const action = perm.name.includes('.') ? perm.name.split('.').pop() : perm.name;
                               const displayAction = action.charAt(0).toUpperCase() + action.slice(1);
                               return (

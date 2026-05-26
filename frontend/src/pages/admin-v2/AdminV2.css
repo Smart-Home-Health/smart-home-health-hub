@@ -2,8 +2,8 @@
 
 .admin-v2-layout {
   display: flex;
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: calc(100vh - var(--vkb-height, 0px));
+  min-height: calc(100dvh - var(--vkb-height, 0px));
   background: #0d1117;
   color: #e6edf3;
 }
@@ -18,8 +18,8 @@
   position: fixed;
   top: 0;
   left: 0;
-  height: 100vh;
-  height: 100dvh;
+  height: calc(100vh - var(--vkb-height, 0px));
+  height: calc(100dvh - var(--vkb-height, 0px));
   z-index: 100;
   transition: width 0.2s ease;
 }
@@ -428,8 +428,8 @@
   margin-left: 280px;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: calc(100vh - var(--vkb-height, 0px));
+  min-height: calc(100dvh - var(--vkb-height, 0px));
   transition: margin-left 0.2s ease;
   min-width: 0;
   overflow-x: hidden;
@@ -838,6 +838,60 @@
   min-width: 150px;
 }
 
+.admin-v2-stats-row-compact {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-card {
+  flex: none;
+  min-width: 0;
+  padding: 0.6rem 0.4rem;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.35rem;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-info h4 {
+  font-size: 1.1rem;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-info p {
+  font-size: 0.7rem;
+  margin: 0;
+  line-height: 1.1;
+}
+
+@media (max-width: 600px) {
+  .admin-v2-stats-row-compact {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+
+  .admin-v2-stats-row-compact .admin-v2-stat-card {
+    padding: 0.5rem 0.25rem;
+  }
+
+  .admin-v2-stats-row-compact .admin-v2-stat-info p {
+    font-size: 0.65rem;
+  }
+}
+
 .admin-v2-stat-card {
   background: #161b22;
   border: 1px solid #30363d;
@@ -965,8 +1019,8 @@
 
   .admin-v2-main {
     margin-left: 0;
-    height: 100vh;
-    height: 100dvh;
+    height: calc(100vh - var(--vkb-height, 0px));
+    height: calc(100dvh - var(--vkb-height, 0px));
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -1486,7 +1540,16 @@
   margin-bottom: 1rem;
 }
 
-.admin-v2-form-row .admin-v2-form-group {
+/* 3-column variant for triples (e.g. macros: calories/protein/carbs). */
+.admin-v2-form-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.admin-v2-form-row .admin-v2-form-group,
+.admin-v2-form-row-3 .admin-v2-form-group {
   margin-bottom: 0;
 }
 
@@ -3515,6 +3578,25 @@
   color: #58a6ff;
 }
 
+.admin-v2-badge-prn {
+  background: rgba(159, 122, 234, 0.18);
+  color: #b794f6;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+}
+
+/* Nutrition PRN variants: green for intake (matches nutrition column accent),
+   amber for output so caregivers can tell them apart at a glance. */
+.admin-v2-badge-prn-in {
+  background: rgba(126, 231, 135, 0.18);
+  color: #7ee787;
+}
+
+.admin-v2-badge-prn-out {
+  background: rgba(210, 153, 34, 0.18);
+  color: #d29922;
+}
+
 .admin-v2-badge-type-medical {
   background: rgba(63, 185, 80, 0.2);
   color: #3fb950;
@@ -4301,6 +4383,22 @@
   min-width: 0; /* allow column to shrink inside grid */
 }
 
+/* Clickable hour-row cell — opens the PRN / quick-log modal */
+.admin-v2-schedule-col-clickable {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.admin-v2-schedule-col-clickable:hover {
+  background: #161b22;
+}
+.admin-v2-schedule-col-clickable:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: -2px;
+}
+body.printing-schedule .admin-v2-schedule-col-clickable {
+  cursor: default;
+}
+
 /* Schedule Group (grouped items in one box) */
 .admin-v2-schedule-group {
   background: #21262d;
@@ -4360,6 +4458,36 @@
 
 .admin-v2-schedule-group {
   position: relative;
+}
+
+/* "+ PRN" tap target at the bottom of a populated medication group. Sized
+   for thumbs (≥44px on touch via the media query below). */
+.admin-v2-schedule-prn-add {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: rgba(159, 122, 234, 0.12);
+  color: #b794f6;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 120ms ease;
+}
+.admin-v2-schedule-prn-add:hover,
+.admin-v2-schedule-prn-add:focus-visible {
+  background: rgba(159, 122, 234, 0.22);
+  outline: none;
+}
+@media (pointer: coarse), (max-width: 768px) {
+  .admin-v2-schedule-prn-add {
+    padding: 0.75rem 0.75rem;
+    font-size: 0.8rem;
+  }
+}
+body.printing-schedule .admin-v2-schedule-prn-add {
+  display: none;
 }
 
 /* Schedule Items */
@@ -4517,48 +4645,103 @@
     padding-left: 1rem;
     padding-right: 1rem;
   }
-  /* Date nav: wrap so nothing is cramped */
+  /* On the schedule page: kill .admin-v2-content's top padding so the
+     sticky nav sits flush against the mobile header instead of floating
+     1rem below it. :has() lets us scope this without a JSX change. */
+  .admin-v2-content:has(.admin-v2-schedule-nav) {
+    padding-top: 0;
+  }
+
+  /* Date nav on mobile: slim, single row, sticky at the top of the scroll
+     area so the user can change days from anywhere in the schedule. Today
+     and Print buttons are hidden — the inline TODAY badge marks "today" and
+     Print is rarely used on phones. Bleeds to the horizontal edges of
+     .admin-v2-content (1rem padding) so the sticky bar spans full width. */
   .admin-v2-schedule-nav {
-    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    flex-wrap: nowrap;
     gap: 0.5rem;
-    padding: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    margin: 0 -1rem;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
   }
+  .admin-v2-schedule-nav .admin-v2-btn-sm,
+  .admin-v2-schedule-nav .admin-v2-btn-primary {
+    display: none;
+  }
+  /* Hide the redundant formatted date text on mobile — the native date
+     picker on the right of the nav already displays the full date and is
+     a tap target. Keep only the TODAY badge as an "is today" indicator. */
   .admin-v2-schedule-date {
-    flex: 1 1 100%;
-    order: 1;
-    justify-content: center;
-    padding: 0.25rem 0;
-    font-size: 0.95rem;
+    flex: 0 0 auto;
+    order: 0;
+    padding: 0;
+    gap: 0;
   }
-  .admin-v2-schedule-date span:first-of-type {
-    flex: 1;
-    min-width: 0;
-    text-align: center;
+  .admin-v2-schedule-date > svg,
+  .admin-v2-schedule-date > span:not(.admin-v2-today-badge) {
+    display: none;
+  }
+  /* When not viewing today, the badge isn't rendered, leaving a visually-
+     empty .admin-v2-schedule-date that still claims a flex gap. Collapse it. */
+  .admin-v2-schedule-date:not(:has(.admin-v2-today-badge)) {
+    display: none;
   }
   .admin-v2-today-badge {
     flex-shrink: 0;
   }
   .admin-v2-schedule-nav .admin-v2-btn-icon {
+    flex: 0 0 auto;
     order: 0;
+    width: 32px;
+    height: 32px;
   }
-  .admin-v2-schedule-nav .admin-v2-btn-sm,
-  .admin-v2-schedule-nav .admin-v2-date-picker,
-  .admin-v2-schedule-nav .admin-v2-btn-primary {
-    order: 2;
-    margin-left: 0 !important;
-  }
+  /* Date picker is now the sole date display on mobile (formatted span hidden
+     above) — let it fill available space between the chevrons and TODAY badge. */
   .admin-v2-schedule-nav .admin-v2-date-picker {
-    flex: 1;
+    flex: 1 1 auto;
+    order: 0;
+    margin-left: 0 !important;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    width: auto;
     min-width: 0;
-    max-width: 140px;
-  }
-  .admin-v2-schedule-nav .admin-v2-btn-primary {
-    margin-left: auto;
+    max-width: none;
+    text-align: center;
   }
   .admin-v2-schedule-nav,
   .admin-v2-summary-stats.admin-v2-schedule-stats,
   .admin-v2-schedule-container {
     max-width: 100%;
+  }
+
+  /* Monitoring → Timeline reuses the schedule date nav. The page wraps the
+     timeline in .admin-v2-monitoring with an h1 + subtitle header that's
+     redundant with the mobile top bar — hide it so the sticky date nav
+     sits flush against the top, and let timeline content scroll cleanly
+     beneath. Scoped with :has() so the Alerts/History/Settings sub-views
+     (no schedule-nav) keep their page header. */
+  .admin-v2-monitoring:has(.admin-v2-schedule-nav) .admin-v2-monitoring-header {
+    display: none;
+  }
+  /* Everything after the sticky date nav inside the timeline must stack
+     below it (z-index: 50) so it slides under cleanly. The chart container
+     uses inline position:relative; pinning siblings to z-index 0 makes that
+     positioned chart respect the nav's stacking order. */
+  .admin-v2-monitoring .admin-v2-schedule-nav ~ * {
+    position: relative;
+    z-index: 0;
+  }
+  /* Breathing room between the sticky nav and the filter chip bar that
+     follows it — the nav's margin: 0 -1rem (above) zeroes its bottom margin,
+     so the filter bar would otherwise sit flush against it. */
+  .admin-v2-monitoring .admin-v2-schedule-nav + * {
+    margin-top: 0.5rem;
   }
 
   /* Dashboard summary stats on mobile: same style as schedule - small cards, icon + value only */
@@ -4710,12 +4893,20 @@
     min-width: 560px;
   }
 
-  /* Summary stats on mobile: side-by-side compact cards (icon + X/Y only) */
+  /* Summary stats on mobile: side-by-side compact cards (icon + X/Y only).
+     Sticky directly below the date nav so the schedule items scroll under
+     both. top: 49px ≈ nav padding (8+8) + button (32) + border (1). */
   .admin-v2-summary-stats.admin-v2-schedule-stats {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 0.5rem;
-    margin-bottom: 1rem;
+    margin: 0 -1rem 1rem !important;
+    padding: 0.5rem 1rem 0.75rem;
+    position: sticky;
+    top: 49px;
+    z-index: 45;
+    background: #0d1117;
+    border-bottom: 1px solid #30363d;
   }
   .admin-v2-schedule-stats-spacer {
     display: none;
@@ -6194,6 +6385,246 @@
   margin-top: 0.5rem;
 }
 
+/* ===== NUTRITION OVERVIEW ===== */
+.nutrition-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.nutrition-overview-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.nutrition-overview-summary {
+  margin-bottom: 0;
+}
+
+/* Output presence indicator on summary cards. `present` = something logged
+   today; `absent` = nothing logged. The dot+check makes the day's state
+   readable at a glance without reading numbers. */
+.nutrition-output-status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.nutrition-output-status.present {
+  background: rgba(63, 185, 80, 0.18);
+  color: #3fb950;
+  border: 1px solid rgba(63, 185, 80, 0.4);
+}
+.nutrition-output-status.absent {
+  background: rgba(110, 118, 129, 0.12);
+  border: 1px solid rgba(110, 118, 129, 0.35);
+}
+.nutrition-output-card.no-events .admin-v2-schedule-summary-icon {
+  opacity: 0.55;
+}
+
+.nutrition-overview-count {
+  font-size: 0.85rem;
+  color: #8b949e;
+  font-weight: 500;
+}
+
+/* Combined intake+output table. Keeps shared admin-v2-table styling but
+   adds row-kind hints (subtle left border) so caregivers can scan by type. */
+.nutrition-overview-table .nutrition-row-intake td:first-child {
+  border-left: 3px solid #58a6ff;
+}
+.nutrition-overview-table .nutrition-row-output td:first-child {
+  border-left: 3px solid #a371f7;
+}
+.nutrition-overview-table tbody tr:hover {
+  background: rgba(88, 166, 255, 0.04);
+}
+
+.nutrition-row-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  background: rgba(88, 166, 255, 0.12);
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+.nutrition-row-pill.output {
+  background: rgba(163, 113, 247, 0.12);
+  color: #a371f7;
+  border-color: rgba(163, 113, 247, 0.3);
+}
+.nutrition-row-pill.output.urine {
+  background: rgba(88, 166, 255, 0.12);
+  color: #58a6ff;
+  border-color: rgba(88, 166, 255, 0.3);
+}
+.nutrition-row-pill.output.bowel {
+  background: rgba(187, 128, 9, 0.15);
+  color: #d29922;
+  border-color: rgba(187, 128, 9, 0.35);
+}
+.nutrition-row-pill.output.vomit {
+  background: rgba(248, 81, 73, 0.12);
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.3);
+}
+.nutrition-row-pill.output.mixed_diaper {
+  background: linear-gradient(90deg, rgba(88, 166, 255, 0.15), rgba(210, 153, 34, 0.15));
+  color: #e3b341;
+  border-color: rgba(210, 153, 34, 0.4);
+}
+
+.nutrition-row-notes {
+  color: #8b949e;
+  font-size: 0.85rem;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Asterisk after the time when actual given-at diverges from scheduled.
+   Tooltip on the parent <td> reveals the real time. */
+.nutrition-row-given-hint {
+  margin-left: 2px;
+  color: #d29922;
+  font-weight: 700;
+  cursor: help;
+}
+
+@media (max-width: 768px) {
+  .nutrition-overview-actions {
+    width: 100%;
+  }
+  .nutrition-overview-actions .admin-v2-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .nutrition-overview-count {
+    display: none;
+  }
+
+  /* Transform the overview log table into stacked cards on mobile. The
+     <table>/<tr>/<td> markup is unchanged — we just restyle table parts as
+     blocks/grids so dense rows become readable cards. Cells map to grid
+     areas by column position (nth-child), which is stable because the JSX
+     always renders the same six columns in the same order. */
+  .nutrition-overview-table {
+    border: none;
+    /* The <table> defaults to display:table, which auto-sizes to its
+       content's intrinsic width — that's what was making the row wider than
+       the viewport. Block + width:100% pins it to the container. */
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .nutrition-overview-table thead { display: none; }
+  .nutrition-overview-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+    min-width: 0;
+  }
+  .nutrition-overview-table tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "pill time actions"
+      "name name name"
+      "details details details"
+      "notes notes notes";
+    gap: 0.35rem 0.5rem;
+    align-items: center;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 0.75rem;
+    /* Prevent any cell from forcing the card wider than its container. */
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  /* Card-left accent in place of the desktop td:first-child border */
+  .nutrition-overview-table .nutrition-row-intake { border-left: 3px solid #58a6ff; }
+  .nutrition-overview-table .nutrition-row-output { border-left: 3px solid #a371f7; }
+  .nutrition-overview-table .nutrition-row-intake td:first-child,
+  .nutrition-overview-table .nutrition-row-output td:first-child {
+    border-left: none;
+  }
+  /* Drop hover state on touch UI */
+  .nutrition-overview-table tbody tr:hover { background: #161b22; }
+
+  .nutrition-overview-table td {
+    padding: 0;
+    border: none;
+    display: block;
+    min-width: 0;        /* let grid cells shrink */
+    overflow-wrap: anywhere; /* break long unbreakable strings */
+  }
+  .nutrition-overview-table td:nth-child(1) {
+    grid-area: time;
+    font-size: 0.85rem;
+    color: #8b949e;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .nutrition-overview-table td:nth-child(2) {
+    grid-area: pill;
+    justify-self: start;
+  }
+  .nutrition-overview-table td:nth-child(3) {
+    grid-area: name;
+    font-size: 1rem;
+    line-height: 1.3;
+  }
+  .nutrition-overview-table td:nth-child(4) {
+    grid-area: details;
+    color: #c9d1d9;
+    font-size: 0.85rem;
+    line-height: 1.4;
+  }
+  /* Notes cell: undo desktop ellipsis/nowrap so it wraps inside the card,
+     and collapse when there's no content (React renders {''} as no children
+     so :empty matches). */
+  .nutrition-overview-table td:nth-child(5),
+  .nutrition-overview-table .nutrition-row-notes {
+    grid-area: notes;
+    color: #8b949e;
+    font-size: 0.8rem;
+    font-style: italic;
+    white-space: normal;
+    overflow: visible;
+    max-width: none;
+  }
+  .nutrition-overview-table td:nth-child(5):empty {
+    display: none;
+  }
+  .nutrition-overview-table td:nth-child(6) {
+    grid-area: actions;
+    justify-self: end;
+  }
+
+  /* Also make sure the table container itself doesn't scroll horizontally. */
+  .admin-v2-section .admin-v2-table-container:has(.nutrition-overview-table) {
+    overflow-x: hidden;
+  }
+}
+
 /* Filters Card Styles */
 .admin-v2-filters-card {
   background: #161b22;
@@ -6886,8 +7317,50 @@
 
 .admin-v2-output-type-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.5rem;
+}
+
+/* Step-1 location picker — large thumb-friendly tiles */
+.admin-v2-output-location-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+.admin-v2-output-location-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.5rem 1rem;
+  min-height: 110px;
+  background: #161b22;
+  border: 2px solid #30363d;
+  border-radius: 10px;
+  color: #e6edf3;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.admin-v2-output-location-btn:hover,
+.admin-v2-output-location-btn:focus-visible {
+  border-color: #58a6ff;
+  background: #1c2230;
+  outline: none;
+}
+.admin-v2-output-location-label {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.admin-v2-output-location-desc {
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+@media (max-width: 480px) {
+  .admin-v2-output-location-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .admin-v2-output-type-btn {
@@ -7168,13 +7641,100 @@
   .admin-v2-output-type-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .admin-v2-output-concerns-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .admin-v2-output-method-options {
     flex-direction: column;
+  }
+}
+
+/* Mobile sizing for any admin-v2 modal (intake, output, etc).
+   - Edge-to-edge so we don't waste viewport on padding around the modal
+   - Modal pinned to top so iOS dvh fluctuations don't drift the content
+   - Body uses explicit flex:1 1 0 + touch momentum scroll so the first
+     row of content never sits underneath the header
+   - font-size: 16px on inputs prevents iOS auto-zoom on focus */
+@media (max-width: 768px) {
+  /* Admin-v2 has a sticky mobile header (~64px) that the modal overlay
+     was sliding underneath. Pin the overlay to start just below it so
+     the modal's own header is fully visible and the page menu button
+     stays reachable. */
+  .admin-v2-modal-overlay {
+    padding: 0;
+    align-items: flex-start;
+    justify-content: stretch;
+    top: 64px;
+  }
+  .admin-v2-modal {
+    width: 100vw;
+    max-width: 100vw;
+    height: calc(100vh - 64px);
+    height: calc(100dvh - 64px);
+    max-height: calc(100vh - 64px);
+    max-height: calc(100dvh - 64px);
+    border-radius: 0;
+    border: none;
+    margin: 0;
+  }
+  .admin-v2-modal form {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .admin-v2-modal-header {
+    padding: 0.75rem 1rem;
+    flex: 0 0 auto;
+  }
+  .admin-v2-modal-header h2,
+  .admin-v2-modal-header h3 {
+    font-size: 1rem;
+  }
+  .admin-v2-modal-body {
+    padding: 0.875rem;
+    flex: 1 1 0;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .admin-v2-modal-footer {
+    padding: 0.75rem 1rem;
+    flex: 0 0 auto;
+  }
+  .admin-v2-form-row,
+  .admin-v2-form-row-3 {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .admin-v2-output-details-card {
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .admin-v2-output-card-title {
+    font-size: 0.85rem;
+    margin-bottom: 0.625rem;
+    padding-bottom: 0.4rem;
+  }
+  .admin-v2-form-group input,
+  .admin-v2-form-group select,
+  .admin-v2-form-group textarea,
+  .admin-v2-output-notes-section textarea {
+    padding: 0.75rem;
+    font-size: 16px;
+  }
+  /* Output location tiles — shrink so all four fit without needing
+     scroll on the location step. Still ≥44px tall for touch. */
+  .admin-v2-output-location-btn {
+    min-height: 80px;
+    padding: 0.875rem 0.75rem;
+  }
+  .admin-v2-output-location-label {
+    font-size: 0.95rem;
+  }
+  .admin-v2-output-location-desc {
+    font-size: 0.7rem;
   }
 }
 
@@ -7812,6 +8372,13 @@
 
 .vital-chart-container.span-2 {
   grid-column: span 2;
+}
+
+.vital-chart-container .chart-subtitle {
+  color: #9ca3af;
+  font-size: 0.75rem;
+  font-weight: 400;
+  margin-left: 0.4rem;
 }
 
 /* Nutrition Charts */
@@ -8874,4 +9441,157 @@
 
 .spinning {
   animation: spin 1s linear infinite;
+}
+
+/* ───────── Medications overview/manage: mobile card list ───────── */
+/* Hide the card list on desktop; the table is the primary view. */
+.admin-v2-meds-cards {
+  display: none;
+}
+
+/* Title row + Table/Cards view toggle (overview page). */
+.admin-v2-meds-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.admin-v2-meds-header .schedule-section-title {
+  margin: 1.5rem 0 1rem 0;
+  flex: 1;
+  min-width: 0;
+}
+.admin-v2-meds-view-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+/* When the user chooses "Cards" explicitly, force the card layout at any
+   viewport width — including iPad/desktop where the media query below
+   would otherwise show the dense table. */
+.admin-v2-meds-force-cards .admin-v2-meds-desktop {
+  display: none;
+}
+.admin-v2-meds-force-cards .admin-v2-meds-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Default .admin-v2-table-container clips overflow (overflow: hidden) so the
+   border-radius stays clean, but the manage table can exceed the viewport
+   width on narrow desktops. Let it scroll horizontally so action buttons
+   aren't cut off. */
+.admin-v2-table-container.admin-v2-meds-desktop {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  /* Below 768px, swap the squished horizontal table for stacked cards. */
+  .admin-v2-meds-desktop {
+    display: none;
+  }
+  .admin-v2-meds-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
+
+.admin-v2-med-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.75rem 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.admin-v2-med-card-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.admin-v2-med-card-header {
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.admin-v2-med-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+.admin-v2-med-card-title strong {
+  color: #e6edf3;
+  font-size: 1rem;
+  line-height: 1.25;
+  word-break: break-word;
+}
+.admin-v2-med-card-concentration {
+  color: #8b949e;
+  font-size: 0.8rem;
+}
+.admin-v2-med-card-badges {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.admin-v2-med-card-instructions {
+  color: #c9d1d9;
+  font-size: 0.85rem;
+  background: #0d1117;
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  word-break: break-word;
+}
+.admin-v2-med-card-meta {
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+  color: #c9d1d9;
+}
+.admin-v2-med-card-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.admin-v2-med-card-label {
+  color: #6e7681;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.admin-v2-med-card-sub {
+  color: #8b949e;
+  font-size: 0.78rem;
+}
+.admin-v2-med-card-dose {
+  margin-top: 0.25rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+/* Manage page only — row of action buttons at the bottom of each card */
+.admin-v2-med-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.admin-v2-med-card-actions .admin-v2-action-btn {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+.admin-v2-med-card-inactive {
+  opacity: 0.6;
 }
