@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import config from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 
@@ -21,6 +21,20 @@ const VitalsForm = ({ onSave, onClose }) => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
+
+  const [customDefinitions, setCustomDefinitions] = useState([]);
+  const [activeCustomVitals, setActiveCustomVitals] = useState({});
+  const [customVitalsData, setCustomVitalsData] = useState({});
+
+  useEffect(() => {
+    if (!selectedPatient) return;
+    fetch(`${config.apiUrl}/api/vitals/custom-definitions?patient_id=${selectedPatient.id}`, {
+      credentials: 'include'
+    })
+      .then(res => res.ok ? res.json() : [])
+      .then(defs => setCustomDefinitions(defs))
+      .catch(() => setCustomDefinitions([]));
+  }, [selectedPatient]);
 
   const handleInputChange = (category, field, value) => {
     if (category) {
@@ -88,6 +102,13 @@ const VitalsForm = ({ onSave, onClose }) => {
     if (formData.bathroom.size) {
       payload.bathroom_size = formData.bathroom.size;
     }
+    // Custom vitals
+    for (const def of customDefinitions) {
+      const val = customVitalsData[def.name];
+      if (val !== undefined && val !== '' && val != null) {
+        payload[def.name] = parseFloat(val);
+      }
+    }
     return payload;
   };
 
@@ -143,6 +164,7 @@ const VitalsForm = ({ onSave, onClose }) => {
           notes: '',
           bathroom: { type: '', size: '' }
         });
+        setCustomVitalsData({});
         setSuccess(false);
       }, 2000);
     } catch (err) {
@@ -255,6 +277,24 @@ const VitalsForm = ({ onSave, onClose }) => {
           >
             Bathroom {showBathroom ? '-' : '+'}
           </button>
+          {customDefinitions.map(def => (
+            <button
+              key={def.name}
+              type="button"
+              onClick={() => setActiveCustomVitals(prev => ({ ...prev, [def.name]: !prev[def.name] }))}
+              style={{
+                padding: '8px 16px',
+                border: `1px solid ${activeCustomVitals[def.name] ? '#a371f7' : '#4a5568'}`,
+                borderRadius: '6px',
+                backgroundColor: activeCustomVitals[def.name] ? 'rgba(163,113,247,0.3)' : 'rgba(255,255,255,0.1)',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              {def.display_label} {activeCustomVitals[def.name] ? '-' : '+'}
+            </button>
+          ))}
         </div>
 
         {showBloodPressure && (
@@ -556,6 +596,42 @@ const VitalsForm = ({ onSave, onClose }) => {
           </div>
         </div>
       )}
+
+      {customDefinitions.filter(def => activeCustomVitals[def.name]).map(def => (
+        <div key={def.name} style={{
+          backgroundColor: 'rgba(255,255,255,0.05)',
+          borderRadius: '8px',
+          padding: '20px',
+          border: '1px solid rgba(163,113,247,0.3)'
+        }}>
+          <h3 style={{ color: '#fff', marginBottom: '20px', fontSize: '18px' }}>{def.display_label}</h3>
+          <div style={{ maxWidth: '250px' }}>
+            <label style={{
+              display: 'block',
+              marginBottom: '8px',
+              color: '#ccc',
+              fontSize: '14px'
+            }}>{def.display_label}{def.unit ? ` (${def.unit})` : ''}</label>
+            <input
+              type="number"
+              step="any"
+              value={customVitalsData[def.name] || ''}
+              onChange={(e) => setCustomVitalsData(prev => ({ ...prev, [def.name]: e.target.value }))}
+              placeholder="—"
+              style={{
+                width: 'calc(100% - 24px)',
+                padding: '12px',
+                border: '1px solid rgba(163,113,247,0.3)',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+                color: '#fff',
+                fontSize: '16px',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+        </div>
+      ))}
 
       <div style={{
         backgroundColor: 'rgba(255,255,255,0.05)',
