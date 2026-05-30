@@ -17,6 +17,7 @@ from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from schemas.equipment import Equipment
+from schemas.integration import Integration as IntegrationModel, PatientIntegration
 from croniter import croniter
 
 logger = logging.getLogger("app")
@@ -58,6 +59,21 @@ async def get_dashboard_summary(db: Session = Depends(get_db), _: bool = Depends
             .all()
         )
 
+        # One query for all Frigate-enabled patient integrations.
+        frigate_rows = (
+            db.query(PatientIntegration.patient_id, PatientIntegration.settings)
+            .join(IntegrationModel, PatientIntegration.integration_id == IntegrationModel.id)
+            .filter(
+                PatientIntegration.is_enabled == True,
+                IntegrationModel.slug == "frigate",
+            )
+            .all()
+        )
+        camera_by_patient = {
+            pid: (settings or {}).get("camera")
+            for pid, settings in frigate_rows
+        }
+
         patient_list = []
         total_meds_due = 0
         total_tasks_due = 0
@@ -72,6 +88,8 @@ async def get_dashboard_summary(db: Session = Depends(get_db), _: bool = Depends
             total_tasks_due += tasks_due
             total_equipment_due += equipment_due
 
+            camera_name = camera_by_patient.get(patient.id)
+
             patient_list.append({
                 "id": patient.id,
                 "first_name": patient.first_name,
@@ -81,6 +99,8 @@ async def get_dashboard_summary(db: Session = Depends(get_db), _: bool = Depends
                 "room": None,
                 "is_active": patient.is_active,
                 "status": "active",
+                "has_camera": bool(camera_name),
+                "camera_name": camera_name,
                 "due_counts": {
                     "medications": meds_due,
                     "tasks": tasks_due,

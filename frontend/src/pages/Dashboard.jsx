@@ -4,15 +4,16 @@ import ClockCard from "../components/ClockCard";
 import DynamicVitalsCard from "../components/DynamicVitalsCard";
 import ModalBase from "../components/ModalBase";
 import SettingsForm from "../components/SettingsForm";
-import { 
-  SettingsIcon, 
-  MinimalistVentIcon, 
-  MinimalistPulseOxIcon, 
+import {
+  SettingsIcon,
+  MinimalistVentIcon,
+  MinimalistPulseOxIcon,
   HistoryIcon,
   MedicationIcon,
   NutritionIcon,
   CareTasksIcon,
-  MessagesIcon
+  MessagesIcon,
+  CameraIcon
 } from "../components/Icons";
 import logoImage from '../assets/logo2.png';
 import config from '../config';
@@ -22,6 +23,8 @@ import HistoryModal from "../components/HistoryModal";
 import MedicationModal from "../components/MedicationModal";
 import NutritionModal from "../components/NutritionModal";
 import CareTaskModal from "../components/CareTaskModal";
+import CameraLiveModal from "../components/CameraLiveModal";
+import { formatVitalDisplayName } from "../utils/vitals";
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
@@ -109,6 +112,8 @@ export default function Dashboard() {
   const [isNutritionModalOpen, setIsNutritionModalOpen] = useState(false);
   const [isCareTaskModalOpen, setIsCareTaskModalOpen] = useState(false);
   const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [hasCamera, setHasCamera] = useState(false);
   const [isAlarmActive, setIsAlarmActive] = useState(false);
   const [isAlarmBlinking, setIsAlarmBlinking] = useState(false);
   const alarmBlinkInterval = useRef(null);
@@ -262,21 +267,6 @@ export default function Dashboard() {
     }
   };
 
-  // Helper function to format vital display names
-  const formatVitalDisplayName = (vital) => {
-    const displayNames = {
-      'blood_pressure': 'Blood Pressure',
-      'temperature': 'Temperature',
-      'bathroom': 'Bathroom',
-      'weight': 'Weight',
-      'calories': 'Calories',
-      'water': 'Water Intake',
-      'nutrition': 'Nutrition'
-    };
-    
-    return displayNames[vital] || vital.charAt(0).toUpperCase() + vital.slice(1);
-  };
-
   // Load chart time range and perfusion display settings
   useEffect(() => {
     if (needsUnlock) return;
@@ -418,6 +408,32 @@ export default function Dashboard() {
   useEffect(() => {
     fetchEquipmentDueCount();
   }, []);
+
+  // Detect Frigate integration for the current patient so we can swap the
+  // Messages icon for a live camera icon when one is configured.
+  useEffect(() => {
+    let cancelled = false;
+    setHasCamera(false);
+    if (!selectedPatient?.id || needsUnlock) return;
+    (async () => {
+      try {
+        const res = await fetch(
+          `${config.apiUrl}/api/integrations/patient/${selectedPatient.id}?include_disabled=false`,
+          { credentials: 'include' }
+        );
+        if (!res.ok) return;
+        const list = await res.json();
+        if (cancelled) return;
+        const frigate = (list || []).find(
+          i => i.integration_slug === 'frigate' && i.is_enabled && i.settings?.camera
+        );
+        setHasCamera(!!frigate);
+      } catch (_) {
+        // ignore - camera detection is non-critical
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPatient?.id, needsUnlock]);
 
   const wsRef = useRef(null);
   useEffect(() => {
@@ -579,6 +595,7 @@ export default function Dashboard() {
     setIsNutritionModalOpen(false);
     setIsCareTaskModalOpen(false);
     setIsMessagesModalOpen(false);
+    setIsCameraModalOpen(false);
     setIsMobileMenuOpen(false);
   };
 
@@ -681,6 +698,16 @@ export default function Dashboard() {
       if (!ensureUnlockAndUser('messages')) return;
       closeAllModals();
       setIsMessagesModalOpen(true);
+    }
+  };
+
+  const handleCameraClick = () => {
+    if (isCameraModalOpen) {
+      setIsCameraModalOpen(false);
+    } else {
+      if (!ensureUnlockAndUser('camera')) return;
+      closeAllModals();
+      setIsCameraModalOpen(true);
     }
   };
 
@@ -947,13 +974,23 @@ export default function Dashboard() {
               </div>
 
               <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isMessagesModalOpen ? 'active' : ''}`}
-                  onClick={handleMessagesClick}
-                  aria-label="Messages"
-                >
-                  <MessagesIcon />
-                </button>
+                {hasCamera ? (
+                  <button
+                    className={`menu-button ${isCameraModalOpen ? 'active' : ''}`}
+                    onClick={handleCameraClick}
+                    aria-label="Live Camera"
+                  >
+                    <CameraIcon />
+                  </button>
+                ) : (
+                  <button
+                    className={`menu-button ${isMessagesModalOpen ? 'active' : ''}`}
+                    onClick={handleMessagesClick}
+                    aria-label="Messages"
+                  >
+                    <MessagesIcon />
+                  </button>
+                )}
               </div>
 
               <div className="icon-wrapper">
@@ -1013,10 +1050,17 @@ export default function Dashboard() {
               <span>History</span>
             </div>
             
-            <div className="mobile-menu-item" onClick={() => { handleMessagesClick(); setIsMobileMenuOpen(false); }}>
-              <MessagesIcon />
-              <span>Messages</span>
-            </div>
+            {hasCamera ? (
+              <div className="mobile-menu-item" onClick={() => { handleCameraClick(); setIsMobileMenuOpen(false); }}>
+                <CameraIcon />
+                <span>Live Camera</span>
+              </div>
+            ) : (
+              <div className="mobile-menu-item" onClick={() => { handleMessagesClick(); setIsMobileMenuOpen(false); }}>
+                <MessagesIcon />
+                <span>Messages</span>
+              </div>
+            )}
             
             <div className="mobile-menu-item" onClick={() => { handleSettingsClick(); setIsMobileMenuOpen(false); }}>
               <SettingsIcon />
@@ -1256,18 +1300,22 @@ export default function Dashboard() {
 
             <div className="right-column">
               <div className="dynamic-chart-container">
-                <DynamicVitalsCard 
+                <DynamicVitalsCard
                   vitalType={dashboardChart1.vital_type}
                   data={dashboardChart1.data}
                   title={`Chart 1: ${formatVitalDisplayName(dashboardChart1.vital_type)} History`}
+                  patientId={selectedPatient?.id}
+                  onSaved={() => fetchChartData(dashboardChart1.vital_type, 1)}
                 />
               </div>
 
               <div className="dynamic-chart-container">
-                <DynamicVitalsCard 
+                <DynamicVitalsCard
                   vitalType={dashboardChart2.vital_type}
                   data={dashboardChart2.data}
                   title={`Chart 2: ${formatVitalDisplayName(dashboardChart2.vital_type)} History`}
+                  patientId={selectedPatient?.id}
+                  onSaved={() => fetchChartData(dashboardChart2.vital_type, 2)}
                 />
               </div>
             </div>
@@ -1302,6 +1350,15 @@ export default function Dashboard() {
       {/* History Modal */}
       {isHistoryModalOpen && (
         <HistoryModal onClose={() => setIsHistoryModalOpen(false)} />
+      )}
+
+      {/* Camera Modal (replaces Messages when patient has Frigate) */}
+      {isCameraModalOpen && selectedPatient?.id && (
+        <CameraLiveModal
+          patientId={selectedPatient.id}
+          patientName={[selectedPatient.first_name, selectedPatient.last_name].filter(Boolean).join(' ')}
+          onClose={() => setIsCameraModalOpen(false)}
+        />
       )}
 
       {/* Messages Modal */}

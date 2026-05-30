@@ -6,31 +6,13 @@ Stuff to pick up when there's time. No particular order.
 
 ## Live Dashboard
 
-- **Small chart scaling** — y-axis scaling is poor, hard to tell what each value means. Needs better axis labels / range handling so charts are actually readable at a glance.
-- **Nutrition on the live board** — surface nutrition data somewhere on the live dashboard. Possibly alongside or within the care tasks panel (TBD on placement).
+- **Per-modal re-auth (5 min)** — main live view keeps the one-per-day unlock, but opening any modal (meds / tasks / nutrition / etc.) should require a fresh user auth if more than 5 min has passed since the last verification, so we capture the *correct* user for every action logged from that modal.
 
 ---
 
-## AI / Analysis — Medication-Vital Correlations
+## General
 
-Goal: detect patterns like "med X causes BPM +15 for ~1 hour" using local stats, no cloud LLM.
-
-**Approach agreed on:**
-- Use `statsmodels` (event study / windowed t-test) as the detection layer — not an LLM
-- For each dose event in `medication_log`, grab BPM readings from `pulse_ox_data` in a pre/post window and run `ttest_ind` to check significance
-- Eventually layer a small local LLM (Phi-3 Mini or Qwen2.5-1.5B via Ollama) on top for plain-English summaries, but raw stats come first
-
-**Where to build it:**
-- New package: `backend/analysis/` (alongside `crud/`)
-- Core function: `analyze_med_effect(db, patient_id, medication_id, ...)` — returns pre/post means, delta, p-value, significance flag
-- Route: `/api/analysis/patients/{patient_id}/med-effects` (stub when ready)
-
-**Data sources already in place:**
-- Events: `medication_log.administered_at` + `medication_id`
-- Time series: `pulse_ox_data.bpm` (high-freq device) or `vitals` where `vital_type='heart_rate'`
-- Both use `TIMESTAMP(timezone=True)` — verify tz consistency before relying on delta math
-
-**Starter code** already drafted in conversation — paste into `backend/analysis/med_vital_correlation.py`.
+- **Number-pad virtual keyboard for numeric inputs** — virtual keyboard should switch to a num-pad layout whenever the focused input is `type="number"` (or otherwise marked numeric), instead of showing the full alpha keyboard.
 
 ---
 
@@ -150,31 +132,6 @@ Add a `[data-theme="high-contrast"]` block. Requirements: WCAG AAA (7:1 ratio fo
 - [ ] Check focus rings are visible in all themes (keyboard nav)
 - [ ] Test on mobile viewport
 - [ ] Verify legacy dashboard still looks correct in dark mode (it doesn't have a light variant — acceptable, or add a note in the toggle that it's dark-only)
-
----
-
-## Custom Vitals
-
-Allow per-patient custom vital definitions (e.g. insulin, blood glucose, HbA1c) so caregivers can track condition-specific metrics alongside built-in vitals.
-
-### Backend
-
-- [ ] **Migration** — new `custom_vital_definitions` table: `(id, patient_id FK, name VARCHAR, unit VARCHAR(20), display_label VARCHAR, created_at TIMESTAMP)`. Scoped per-patient. Re-export from `models/__init__.py` so Alembic sees it.
-- [ ] **Routes** — `GET/POST/DELETE /api/vitals/custom-definitions?patient_id=` in `backend/routes/vitals.py` (or a new `custom_vitals.py`). POST body: `{ patient_id, name, unit, display_label }`. DELETE by id. Use `require_permission` guard.
-- [ ] **No changes needed** to `Vital` ORM, `save_vital()`, or `/api/vitals/manual` — the generic fallback path at `routes/vitals.py:287` already stores arbitrary `vital_type` strings with a unit. Custom vitals just flow through.
-
-### Frontend — AdminV2Vitals.jsx
-
-- [ ] **Definition management panel** — new sub-section on the Record view (or a separate "Custom" tab). Form: name field + unit field + Add button. List existing definitions with a delete button. Calls the new API routes.
-- [ ] **Merge custom vitals into toggle bar** — after fetching definitions, append them to the `vitalTypes` array and `activeVitals` state so they appear as toggleable cards alongside built-ins.
-- [ ] **Dynamic form fields** — add `customVitalsData` state object keyed by definition id. Render a generic `vital-input-card` for each active custom vital. Include in `handleVitalsSubmit` loop (POST with `vital_type: def.name`, `unit: def.unit`).
-- [ ] **History filter dropdown** — the `<select>` at line 502 is hardcoded to `vitalTypes`; merge in fetched custom definitions so they appear as filter options.
-
-### Not needed (works as-is)
-
-- `GET /api/vitals/patient/{patient_id}` — already returns all stored vital types dynamically.
-- `GET /api/vitals/types` — already returns distinct strings from the table.
-- The `/summary` trend chart endpoint hardcodes 5 built-in types — custom vitals won't appear in charts, which is acceptable for now.
 
 ---
 

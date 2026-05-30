@@ -90,6 +90,10 @@ async def get_daily_schedule(
         None,
         description="Minutes the caller's local time is ahead of UTC. When provided, the day boundary is the caller's local midnight rather than UTC midnight.",
     ),
+    include_prior_day: bool = Query(
+        False,
+        description="If true, also include the prior day's nutrition items (marked is_yesterday=true). Used by the live dashboard so missed items remain visible; admin views leave it off to avoid duplicating yesterday's completions.",
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -104,9 +108,21 @@ async def get_daily_schedule(
         else:
             schedule_date = date.today()
 
-        # Get all scheduled items (now includes completion status from joined logs)
+        # Get all scheduled items (now includes completion status from joined logs).
         medications = get_scheduled_medications(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
-        nutrition_items = get_scheduled_nutrition(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
+        today_nutrition = get_scheduled_nutrition(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
+        for item in today_nutrition:
+            item["is_yesterday"] = False
+        nutrition_items = today_nutrition
+        if include_prior_day:
+            # Live dashboard opts in so missed items from yesterday stay
+            # visible. Admin views skip this to avoid duplicating yesterday's
+            # completions onto the current-day view.
+            prior_date = schedule_date - timedelta(days=1)
+            prior_nutrition = get_scheduled_nutrition(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes)
+            for item in prior_nutrition:
+                item["is_yesterday"] = True
+            nutrition_items = prior_nutrition + nutrition_items
         care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
         
         # Build response - completion status already included from get_scheduled_* functions
@@ -158,6 +174,7 @@ async def get_daily_schedule(
                 "intake_type": nutr.get("intake_type", "intake"),
                 "output_type": nutr.get("output_type"),
                 "log_id": nutr.get("log_id"),
+                "is_yesterday": nutr.get("is_yesterday", False),
                 "type": "nutrition",
             })
         
