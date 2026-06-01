@@ -6,31 +6,17 @@ Stuff to pick up when there's time. No particular order.
 
 ## Live Dashboard
 
-- **Small chart scaling** — y-axis scaling is poor, hard to tell what each value means. Needs better axis labels / range handling so charts are actually readable at a glance.
-- **Nutrition on the live board** — surface nutrition data somewhere on the live dashboard. Possibly alongside or within the care tasks panel (TBD on placement).
+- **Per-modal re-auth (5 min)** — _IN TESTING_. Account password 1×/24h unchanged; opening any live-dashboard modal now requires a fresh user PIN (idle 5-min window), with the 3 large vital readings pinned visible during auth. Built via `PinChallengeContext` + `PinChallengeModal`. Spec: rolling idle, full user picker each re-auth.
 
 ---
 
-## AI / Analysis — Medication-Vital Correlations
+## Frigate Integration
 
-Goal: detect patterns like "med X causes BPM +15 for ~1 hour" using local stats, no cloud LLM.
-
-**Approach agreed on:**
-- Use `statsmodels` (event study / windowed t-test) as the detection layer — not an LLM
-- For each dose event in `medication_log`, grab BPM readings from `pulse_ox_data` in a pre/post window and run `ttest_ind` to check significance
-- Eventually layer a small local LLM (Phi-3 Mini or Qwen2.5-1.5B via Ollama) on top for plain-English summaries, but raw stats come first
-
-**Where to build it:**
-- New package: `backend/analysis/` (alongside `crud/`)
-- Core function: `analyze_med_effect(db, patient_id, medication_id, ...)` — returns pre/post means, delta, p-value, significance flag
-- Route: `/api/analysis/patients/{patient_id}/med-effects` (stub when ready)
-
-**Data sources already in place:**
-- Events: `medication_log.administered_at` + `medication_id`
-- Time series: `pulse_ox_data.bpm` (high-freq device) or `vitals` where `vital_type='heart_rate'`
-- Both use `TIMESTAMP(timezone=True)` — verify tz consistency before relying on delta math
-
-**Starter code** already drafted in conversation — paste into `backend/analysis/med_vital_correlation.py`.
+- **Live stream stability** — _FIX IN TESTING_. Live HLS failed most of the time while proxied MP4 clips worked. Two root causes, both now addressed:
+  1. **Transport** — `live_url` pointed **directly at Frigate** (`http://<frigate>:5000/api/go2rtc/api/stream.m3u8`), so hls.js fetched it cross-origin (CORS + go2rtc cold-start → "works only when already warm"). Fix: backend **proxies + rewrites** the go2rtc HLS playlist same-site (`/live.m3u8` + `/live-seg`, SSRF-guarded + cold-start retry) in `backend/routes/frigate.py`; `CameraLiveModal.jsx` sends credentials via hls.js `xhrSetup`. _Confirmed working_ — segments now fetch/buffer.
+  2. **Codec** — after the transport fix, hls.js threw `mediaError / bufferAppendError`, i.e. the source is a codec the browser's MSE can't decode (camera "Vent" is almost certainly H.265). Fix: the live upstream now requests `&video=h264&audio=aac` so go2rtc hands back H.264 (copies if already H.264; transcodes only if needed). Overridable via the `live_hls_codecs` setting.
+  - **Still needs a device retest** against the real Frigate (`192.168.1.10:5000`, patient 5 / camera "Vent"). Diagnostic: `GET /api/integrations/frigate/patient/5/live-probe` reports go2rtc's detected codecs. If it still fails with H.265 reported, go2rtc likely lacks ffmpeg for transcode → enable a transcode in Frigate's `go2rtc` config. WebRTC mode still uses the direct URL.
+- **VOD playback** — _RESOLVED (no action)_. Inline VOD already plays the **proxied saved MP4** (`/clips/file`, native `<video>`, same-site, range/seek), which works on Apple devices — the old direct-to-Frigate HLS-VOD path was the flaky one and has been **deleted** (`get_vod_hls_url`, `/clip`, `/clip-urls`). Known limitation left as-is per decision: H.265 MP4 won't play in non-Apple browsers (Chrome/Firefox/Android); closing that would need backend H.264 transcoding (adds ffmpeg to the image).
 
 ---
 
@@ -155,5 +141,6 @@ Add a `[data-theme="high-contrast"]` block. Requirements: WCAG AAA (7:1 ratio fo
 
 ## Medications
 
-- **Undo med on admin-v2 schedule** — fix undo medication action on the admin-v2 schedule page
+- **Zero-quantity administration guard** — _DONE (pending device test)_. Administering a dose larger than the on-hand `Medication.quantity` is now **hard-blocked** (no "administer anyway"). Backend returns `409 {error:"insufficient_quantity", ...}` from all paths (`/api/schedule/complete/medication`, `/complete/bulk`, and `administer_medication` → `/medications/{id}/administer`) via `backend/utils/medication_quantity.py`. Frontend `UpdateQuantityModal` (admin-v2 schedule) forces the caregiver to enter a new on-hand quantity (`PUT /api/medications/{id}`) and then retries the dose; bulk loops through multiple out-of-stock meds. The legacy **live dashboard** `MedicationModal` has the same gate on its Mark-Taken, PRN, and Mark-All paths (Mark-All stops at the out-of-stock med and is re-run after updating; completed doses are skipped to avoid duplicates).
+- **Low-stock medication alert** — _approach undecided_. Need a way to know when a med is running low on hand (`Medication.quantity` in `backend/schemas/medication.py`), before it hits 0 and the [zero-quantity guard] blocks administration. Open questions to settle first: what defines "low" (a per-med reorder threshold field vs. a global "N doses left" / "X days left" computed from dose × schedule frequency)? and how to surface it (badge/count on the meds nav or dashboard, a dedicated alerts list, the existing monitoring/alerts system, or a push notification)? Likely starting point once decided: add a `low_stock_threshold` (or `reorder_at`) field to `Medication` + a computed "doses/days remaining", then surface it. Relates to the zero-quantity guard already built.
 - **Grace-period doses** — missed doses should persist on the schedule view until administered or grace expires, so they don't get silently skipped. Full spec saved in Claude memory (`project-grace-period-doses`). Start point: Alembic migration + `grace_period_hours` field on `MedicationSchedule`.

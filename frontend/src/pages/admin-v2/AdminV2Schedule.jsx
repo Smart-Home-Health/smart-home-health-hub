@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal, CareTaskCompleteModal } from './components';
+import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -55,6 +55,8 @@ const AdminV2Schedule = () => {
   
   // Completion modal state
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  // Hard gate when an administration is refused for insufficient on-hand quantity.
+  const [qtyGate, setQtyGate] = useState({ open: false, info: null });
   const [completeModalData, setCompleteModalData] = useState({
     type: null, // 'medication', 'nutrition', 'care-task'
     items: [], // single item or multiple for bulk
@@ -313,6 +315,19 @@ const AdminV2Schedule = () => {
     setShowCompleteModal(true);
   };
 
+  // When the backend refuses an administration for insufficient on-hand quantity
+  // (409 insufficient_quantity), open the hard update-quantity gate. Returns true
+  // when it handled the response so the caller can stop.
+  const maybeGateOnQuantity = async (response) => {
+    if (response.status !== 409) return false;
+    const err = await response.json().catch(() => ({}));
+    if (err.error === 'insufficient_quantity') {
+      setQtyGate({ open: true, info: err });
+      return true;
+    }
+    return false;
+  };
+
   // Submit completion from modal
   const handleSubmitCompletion = async () => {
     const { type, items, isBulk } = completeModalData;
@@ -373,7 +388,9 @@ const AdminV2Schedule = () => {
           credentials: 'include',
           body: JSON.stringify(payload)
         });
-        
+
+        if (await maybeGateOnQuantity(response)) return;
+
         if (response.ok) {
           setScheduleData(prev => ({
             ...prev,
@@ -413,7 +430,9 @@ const AdminV2Schedule = () => {
             })
           })
         });
-        
+
+        if (await maybeGateOnQuantity(response)) return;
+
         if (response.ok) {
           const result = await response.json();
           if (result.success) {
@@ -631,13 +650,15 @@ const AdminV2Schedule = () => {
     };
   };
 
-  // Count totals for summary
-  const totalMeds = scheduleData.medications.length;
-  const completedMeds = scheduleData.medications.filter(m => m.completed).length;
-  const totalNutrition = scheduleData.nutrition.length;
-  const completedNutrition = scheduleData.nutrition.filter(n => n.completed).length;
-  const totalTasks = scheduleData.care_tasks.length;
-  const completedTasks = scheduleData.care_tasks.filter(t => t.completed).length;
+  // Count totals for summary. These are scheduled-adherence ratios, so PRN /
+  // ad-hoc entries (is_prn) are excluded — they still render on the timeline,
+  // but they're extra care, not part of "X of Y scheduled items done".
+  const totalMeds = scheduleData.medications.filter(m => !m.is_prn).length;
+  const completedMeds = scheduleData.medications.filter(m => !m.is_prn && m.completed).length;
+  const totalNutrition = scheduleData.nutrition.filter(n => !n.is_prn).length;
+  const completedNutrition = scheduleData.nutrition.filter(n => !n.is_prn && n.completed).length;
+  const totalTasks = scheduleData.care_tasks.filter(t => !t.is_prn).length;
+  const completedTasks = scheduleData.care_tasks.filter(t => !t.is_prn && t.completed).length;
 
   return (
     <AdminV2Layout>
@@ -974,9 +995,12 @@ const AdminV2Schedule = () => {
                                 </button>
                               )}
                               {careTasksByHour[hour].map((task, idx) => {
-                                const itemKey = `care-task-${task.schedule_id}-${task.scheduled_time}`;
+                                // PRN completions have no schedule_id; key off log_id instead.
+                                const rowId = task.schedule_id ?? `prn-${task.log_id}`;
+                                const itemKey = `care-task-${rowId}-${task.scheduled_time}`;
+                                const isPrn = !!task.is_prn;
                                 return (
-                                  <React.Fragment key={`task-${task.schedule_id}-${idx}`}>
+                                  <React.Fragment key={`task-${rowId}-${idx}`}>
                                     {idx > 0 && (
                                       <div
                                         className="admin-v2-schedule-divider"
@@ -990,7 +1014,8 @@ const AdminV2Schedule = () => {
                                       className={`admin-v2-schedule-item ${task.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
                                       onClick={(e) => { e.stopPropagation(); if (!task.completed) handleCompleteItem('care-task', task); }}
                                       role="button"
-                                      tabIndex={task.completed ? -1 : 0}
+                                      tabIndex={task.completed || isPrn ? -1 : 0}
+                                      title={isPrn ? 'PRN care task — completed ad-hoc' : undefined}
                                       style={task.category_color ? { borderLeft: `3px solid ${task.category_color}` } : {}}
                                     >
                                       <div className="admin-v2-schedule-item-header">
@@ -1004,6 +1029,11 @@ const AdminV2Schedule = () => {
                                           );
                                         })()}
                                         <span className="admin-v2-schedule-item-name">{task.name}</span>
+                                        {isPrn && (
+                                          <span className="admin-v2-badge admin-v2-badge-prn" title="As-needed care task">
+                                            PRN
+                                          </span>
+                                        )}
                                         {task.category_name && (
                                           <span 
                                             className="admin-v2-schedule-item-category"
@@ -1500,6 +1530,13 @@ const AdminV2Schedule = () => {
           medication={doseModalMed}
           defaultDateTime={doseModalDefaultDt}
         />
+        {qtyGate.open && (
+          <UpdateQuantityModal
+            info={qtyGate.info}
+            onClose={() => setQtyGate({ open: false, info: null })}
+            onUpdated={() => { setQtyGate({ open: false, info: null }); handleSubmitCompletion(); }}
+          />
+        )}
         <CareTaskCompleteModal
           open={showCareTaskCompleteModal}
           onClose={() => { setShowCareTaskCompleteModal(false); setCareTaskModalTask(null); }}

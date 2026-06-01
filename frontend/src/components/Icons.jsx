@@ -150,6 +150,14 @@ export const MessagesIcon = () => (
   </svg>
 );
 
+export const CameraIcon = ({ size = 30 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 7h3l2-2h8l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" />
+    <circle cx="12" cy="13" r="4" />
+  </svg>
+);
+
 // Admin V2 Navigation Icons
 export const DashboardIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
