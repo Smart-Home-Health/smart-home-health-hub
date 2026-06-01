@@ -844,6 +844,14 @@
   gap: 0.5rem;
 }
 
+/* 3-column variant: lays an even card set (e.g. 6 cards) out as full rows of
+   three that fill the width, instead of leaving a short trailing row. The
+   compound selector outranks the single-class breakpoint rules below, so it
+   holds at every width. */
+.admin-v2-stats-row-compact.admin-v2-stats-row-3col {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .admin-v2-stats-row-compact .admin-v2-stat-card {
   flex: none;
   min-width: 0;

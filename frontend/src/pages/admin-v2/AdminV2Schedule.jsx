@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal, CareTaskCompleteModal } from './components';
+import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -55,6 +55,8 @@ const AdminV2Schedule = () => {
   
   // Completion modal state
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  // Hard gate when an administration is refused for insufficient on-hand quantity.
+  const [qtyGate, setQtyGate] = useState({ open: false, info: null });
   const [completeModalData, setCompleteModalData] = useState({
     type: null, // 'medication', 'nutrition', 'care-task'
     items: [], // single item or multiple for bulk
@@ -313,6 +315,19 @@ const AdminV2Schedule = () => {
     setShowCompleteModal(true);
   };
 
+  // When the backend refuses an administration for insufficient on-hand quantity
+  // (409 insufficient_quantity), open the hard update-quantity gate. Returns true
+  // when it handled the response so the caller can stop.
+  const maybeGateOnQuantity = async (response) => {
+    if (response.status !== 409) return false;
+    const err = await response.json().catch(() => ({}));
+    if (err.error === 'insufficient_quantity') {
+      setQtyGate({ open: true, info: err });
+      return true;
+    }
+    return false;
+  };
+
   // Submit completion from modal
   const handleSubmitCompletion = async () => {
     const { type, items, isBulk } = completeModalData;
@@ -373,7 +388,9 @@ const AdminV2Schedule = () => {
           credentials: 'include',
           body: JSON.stringify(payload)
         });
-        
+
+        if (await maybeGateOnQuantity(response)) return;
+
         if (response.ok) {
           setScheduleData(prev => ({
             ...prev,
@@ -413,7 +430,9 @@ const AdminV2Schedule = () => {
             })
           })
         });
-        
+
+        if (await maybeGateOnQuantity(response)) return;
+
         if (response.ok) {
           const result = await response.json();
           if (result.success) {
@@ -1511,6 +1530,13 @@ const AdminV2Schedule = () => {
           medication={doseModalMed}
           defaultDateTime={doseModalDefaultDt}
         />
+        {qtyGate.open && (
+          <UpdateQuantityModal
+            info={qtyGate.info}
+            onClose={() => setQtyGate({ open: false, info: null })}
+            onUpdated={() => { setQtyGate({ open: false, info: null }); handleSubmitCompletion(); }}
+          />
+        )}
         <CareTaskCompleteModal
           open={showCareTaskCompleteModal}
           onClose={() => { setShowCareTaskCompleteModal(false); setCareTaskModalTask(null); }}

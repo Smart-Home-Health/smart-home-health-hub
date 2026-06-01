@@ -61,6 +61,48 @@ const MedicationModal = ({ onClose }) => {
   const [prnSaving, setPrnSaving] = useState(false);
   const [prnError, setPrnError] = useState(null);
 
+  // Hard gate when an administration is refused for insufficient on-hand quantity
+  // (backend 409 insufficient_quantity). `retry` re-runs the original action after
+  // the quantity is updated; null for bulk Mark-All (user re-runs it manually).
+  const [qtyGate, setQtyGate] = useState({ open: false, info: null, retry: null });
+  const [qtyInput, setQtyInput] = useState('');
+  const [qtySaving, setQtySaving] = useState(false);
+  const [qtyError, setQtyError] = useState(null);
+
+  const openQtyGate = (info, retry) => {
+    setQtyInput('');
+    setQtyError(null);
+    setQtyGate({ open: true, info, retry });
+  };
+  const closeQtyGate = () => setQtyGate({ open: false, info: null, retry: null });
+
+  const handleQtySave = async () => {
+    const newQty = parseFloat(qtyInput);
+    if (!(newQty > 0)) { setQtyError('Enter a quantity greater than 0'); return; }
+    setQtySaving(true);
+    setQtyError(null);
+    try {
+      const res = await fetch(`${config.apiUrl}/api/medications/${qtyGate.info.medication_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ quantity: newQty }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || 'Failed to update quantity');
+      }
+      const retry = qtyGate.retry;
+      closeQtyGate();
+      await fetchMedications();
+      if (retry) await retry();
+    } catch (err) {
+      setQtyError(err.message);
+    } finally {
+      setQtySaving(false);
+    }
+  };
+
   // Mobile detection
   useEffect(() => {
     const handleResize = () => {
@@ -268,7 +310,13 @@ const MedicationModal = ({ onClose }) => {
         fetchScheduledMedications();
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.detail || 'Failed to record medication administration.');
+        if (data.error === 'insufficient_quantity') {
+          // Keep the confirm modal open behind the gate; retry re-administers
+          // after the on-hand quantity is updated.
+          openQtyGate(data, handleConfirmMarkTaken);
+        } else {
+          alert(data.detail || 'Failed to record medication administration.');
+        }
       }
     } catch (e) {
       alert('Error recording medication administration.');
@@ -339,11 +387,15 @@ const MedicationModal = ({ onClose }) => {
   };
 
   const handleMarkAllConfirm = async () => {
-    const { selectedMeds, medications } = markAllModal;
-    const selectedMedications = medications.filter(med => selectedMeds.has(med.schedule_id));
-    
+    const { selectedMeds, medications, completedMeds } = markAllModal;
+    // Skip any already-administered in a prior pass so re-running after an
+    // out-of-stock gate doesn't double-administer.
+    const selectedMedications = medications.filter(
+      med => selectedMeds.has(med.schedule_id) && !completedMeds.has(med.schedule_id)
+    );
+
     setMarkAllModal(prev => ({ ...prev, loading: true }));
-    
+
     for (const med of selectedMedications) {
       try {
         const { status } = checkAdministrationWindow(med.scheduled_time);
@@ -361,23 +413,35 @@ const MedicationModal = ({ onClose }) => {
             ...(selectedPatient && { patient_id: selectedPatient.id })
           })
         });
-        
+
         if (res.ok) {
           // Mark this medication as completed
           setMarkAllModal(prev => ({
             ...prev,
             completedMeds: new Set([...prev.completedMeds, med.schedule_id])
           }));
+        } else {
+          const data = await res.json().catch(() => ({}));
+          if (data.error === 'insufficient_quantity') {
+            // Stop the run, keep the modal open with progress so far, and let the
+            // caregiver update the quantity. They re-click "Mark Selected" to
+            // finish the rest (completed ones are skipped above).
+            setMarkAllModal(prev => ({ ...prev, loading: false }));
+            openQtyGate(data, null);
+            await fetchMedications();
+            await fetchScheduledMedications();
+            return;
+          }
         }
       } catch (e) {
         console.error('Error marking medication:', e);
       }
     }
-    
+
     // Refresh data and close modal
     await fetchMedications();
     await fetchScheduledMedications();
-    setMarkAllModal({ 
+    setMarkAllModal({
       open: false, 
       timeGroup: null, 
       medications: [], 
@@ -443,6 +507,10 @@ const MedicationModal = ({ onClose }) => {
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (data.error === 'insufficient_quantity') {
+          openQtyGate(data, handlePrnSave);
+          return;
+        }
         throw new Error(data.detail || 'Failed to record administration');
       }
       await fetchMedications();
@@ -1231,6 +1299,74 @@ const MedicationModal = ({ onClose }) => {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Out-of-stock gate — must update on-hand quantity before the dose records */}
+      {qtyGate.open && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2100
+        }}>
+          <div style={{
+            backgroundColor: '#fff', borderRadius: '10px', padding: '32px',
+            maxWidth: '420px', width: '90%', boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+          }}>
+            <h3 style={{ margin: '0 0 12px 0', color: '#333' }}>
+              Out of Stock — {qtyGate.info?.medication_name}
+            </h3>
+            <div role="alert" style={{
+              background: '#fdecea', border: '1px solid #f5c2c0', borderRadius: 6,
+              padding: '10px 12px', marginBottom: 16, color: '#611a15', fontSize: 14
+            }}>
+              Only <strong>{qtyGate.info?.current_quantity ?? 0} {qtyGate.info?.quantity_unit || ''}</strong> on
+              hand, but this dose needs <strong>{qtyGate.info?.requested_dose} {qtyGate.info?.quantity_unit || ''}</strong>.
+              Update the on-hand quantity to continue — the dose can’t be recorded until you do.
+            </div>
+            {qtyError && (
+              <div style={{ color: '#c0392b', fontSize: 13, marginBottom: 12 }}>{qtyError}</div>
+            )}
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#333', fontSize: 13 }}>
+              New on-hand quantity{qtyGate.info?.quantity_unit ? ` (${qtyGate.info.quantity_unit})` : ''} *
+            </label>
+            <input
+              type="number" step="0.1" min="0" value={qtyInput} autoFocus
+              onChange={(e) => setQtyInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !qtySaving && parseFloat(qtyInput) > 0) handleQtySave(); }}
+              style={{
+                width: '100%', padding: 10, fontSize: 14, border: '2px solid #ddd',
+                borderRadius: 6, boxSizing: 'border-box', background: '#f8f9fa', color: '#333', marginBottom: 20
+              }}
+              placeholder="Enter current count on hand"
+            />
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                onClick={closeQtyGate}
+                disabled={qtySaving}
+                style={{
+                  padding: '8px 16px', border: '1px solid #ddd', borderRadius: 4,
+                  background: '#fff', color: '#333', cursor: qtySaving ? 'not-allowed' : 'pointer', fontSize: 14
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleQtySave}
+                disabled={qtySaving || !(parseFloat(qtyInput) > 0)}
+                style={{
+                  padding: '8px 16px', border: 'none', borderRadius: 4,
+                  background: '#28a745', color: '#fff',
+                  cursor: (qtySaving || !(parseFloat(qtyInput) > 0)) ? 'not-allowed' : 'pointer',
+                  fontSize: 14, fontWeight: 500,
+                  opacity: (qtySaving || !(parseFloat(qtyInput) > 0)) ? 0.6 : 1
+                }}
+              >
+                {qtySaving ? 'Saving...' : 'Update & Continue'}
+              </button>
+            </div>
           </div>
         </div>
       )}
